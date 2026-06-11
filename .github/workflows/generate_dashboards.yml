@@ -1,0 +1,45 @@
+name: Gerar Dashboards A2 Digital
+
+on:
+  schedule:
+    - cron: "0 11 * * *"  # Todo dia às 08:00 horário de Brasília (11:00 UTC)
+  workflow_dispatch:       # Permite rodar manualmente
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependências
+        run: pip install requests google-ads
+
+      - name: Copiar logo A2 Digital
+        run: cp assets/logo_a2.png logo_a2.png
+
+      - name: Gerar dashboards
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          DASHBOARD_ACCOUNTS: ${{ secrets.DASHBOARD_ACCOUNTS }}
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ADS_REFRESH_TOKEN: ${{ secrets.GOOGLE_ADS_REFRESH_TOKEN }}
+        run: python generate_dashboard.py
+
+      - name: Gerar index com links de todos os clientes
+        run: python generate_index.py
+
+      - name: Publicar no GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          force_orphan: true
