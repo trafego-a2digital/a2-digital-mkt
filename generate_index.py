@@ -3,12 +3,18 @@ Gera a página index com links para todos os dashboards.
 Só para uso interno da A2 Digital — não compartilhar com clientes.
 """
 
-import json, os
+import json, os, base64
 from pathlib import Path
 
 ACCOUNTS = json.loads(os.environ["DASHBOARD_ACCOUNTS"])
 OUT_DIR  = Path("docs")
 OUT_DIR.mkdir(exist_ok=True)
+
+LOGO_B64 = ""
+logo_path = Path("assets/logo_a2.png")
+if logo_path.exists():
+    with open(logo_path, "rb") as f:
+        LOGO_B64 = base64.b64encode(f.read()).decode()
 
 rows = ""
 for a in ACCOUNTS:
@@ -51,7 +57,7 @@ body{{font-family:'Inter',sans-serif;background:#0a0a0a;color:#efefef;min-height
 </style>
 </head>
 <body>
-  <div class="logo">A2 Digital</div>
+  {f'<img src="data:image/png;base64,{LOGO_B64}" style="height:72px;margin-bottom:8px" alt="A2 Digital">' if LOGO_B64 else '<div class="logo">A2 Digital</div>'}
   <div class="subtitle">Painel interno — dashboards dos clientes</div>
   <div class="list">{rows}</div>
   <div class="footer">Atualizado diariamente às 08:00 · A2 Digital Marketing</div>
