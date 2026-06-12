@@ -791,9 +791,16 @@ def main():
     print(f"Gerando dashboards para {len(ACCOUNTS)} contas...")
 
     for account in ACCOUNTS:
-        acc_id = account["id"]
-        slug   = account["slug"]
+        platforms = account.get("platforms", ["meta"])
+        slug      = account["slug"]
         result_event = account.get("result_event", "lead")
+
+        # Contas só Google ainda não são suportadas neste script
+        if "meta" not in platforms:
+            print(f"  → {account['name']} — só Google Ads, pulando por enquanto")
+            continue
+
+        acc_id = account["meta_account_id"]
         print(f"  → {account['name']} ({acc_id})")
 
         # Campos de insights
