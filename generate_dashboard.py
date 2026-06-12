@@ -84,29 +84,63 @@ def fetch_meta(account):
         "thruplays":   sum(int(float(v.get("value", 0))) for v in ins.get("video_p95_watched_actions", [])),
     }
 
-    daily = api_get(f"{acc_id}/insights",
-                    {"date_preset": "last_30d", "time_increment": 1,
-                     "fields": "spend,date_start,actions", "level": "account"}).get("data", [])
+    # ── Histórico diário de 180 dias (motor de período dinâmico) ──
+    today = datetime.date.today()
+    since_180 = (today - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
+    until_t   = today.strftime("%Y-%m-%d")
+    tr180 = json.dumps({"since": since_180, "until": until_t})
+
+    daily = []
+    params = {"time_range": tr180, "time_increment": 1, "limit": 500,
+              "fields": "spend,date_start,actions,action_values,clicks,impressions",
+              "level": "account", "access_token": TOKEN}
+    url = f"{BASE_URL}/{acc_id}/insights"
+    while url:
+        r = requests.get(url, params=params, timeout=60)
+        r.raise_for_status()
+        j = r.json()
+        daily.extend(j.get("data", []))
+        url = (j.get("paging") or {}).get("next")
+        params = {}  # next já vem com query string completa
+
+    # Série diária compacta para o motor JS de períodos
+    daily_compact = []
+    for d in sorted(daily, key=lambda x: x.get("date_start", "")):
+        acts_d = d.get("actions", [])
+        avs_d  = d.get("action_values", [])
+        daily_compact.append({
+            "d": d.get("date_start"),
+            "s": round(float(d.get("spend", 0)), 2),
+            "r": extract_action(acts_d, result_event),
+            "m": extract_action(acts_d, MSG_EVENT),
+            "p": extract_action(acts_d, "purchase"),
+            "v": round(extract_action_value(avs_d, "purchase"), 2),
+            "c": int(float(d.get("clicks", 0))),
+            "i": int(float(d.get("impressions", 0))),
+        })
 
     camps = api_get(f"{acc_id}/campaigns",
                     {"fields": "id,name,status,objective,"
-                               "insights.date_preset(last_30d){spend,actions,action_values,impressions,clicks,reach,cpm,ctr,cpc}",
+                               "insights.date_preset(last_30d){spend,actions,action_values,impressions,clicks,reach,cpm,ctr,cpc},"
+                               "insights.date_preset(last_90d){spend,actions,action_values,impressions,clicks,reach,cpm,ctr,cpc}",
                      "filtering": '[{"field":"effective_status","operator":"IN","value":["ACTIVE","PAUSED"]}]',
                      "limit": 20}).get("data", [])
 
-    # Anúncios por campanha
-    for c in camps:
-        try:
-            c["_ads"] = api_get(f"{c['id']}/ads",
-                                {"fields": "id,name,status,"
-                                           "insights.date_preset(last_30d){spend,actions,ctr,cpc},"
-                                           "preview_shareable_link",
-                                 "filtering": '[{"field":"effective_status","operator":"IN","value":["ACTIVE","PAUSED"]}]',
-                                 "limit": 10}).get("data", [])
-        except Exception:
-            c["_ads"] = []
+    # Anúncios por campanha (30d e 90d)
+    for camp in camps:
+        for preset in ["last_30d", "last_90d"]:
+            key = "_ads" if preset == "last_30d" else "_ads_90d"
+            try:
+                camp[key] = api_get(f"{camp['id']}/ads",
+                                    {"fields": f"id,name,status,"
+                                               f"insights.date_preset({preset}){{spend,actions,ctr,cpc}},"
+                                               f"preview_shareable_link",
+                                     "filtering": '[{"field":"effective_status","operator":"IN","value":["ACTIVE","PAUSED"]}]',
+                                     "limit": 10}).get("data", [])
+            except Exception:
+                camp[key] = []
 
-    return {"metrics": metrics, "campaigns": camps, "daily": daily}
+    return {"metrics": metrics, "campaigns": camps, "daily_compact": daily_compact}
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -191,7 +225,7 @@ def fetch_google(account):
             "cost_per_conv": (c_spend / row.metrics.conversions) if row.metrics.conversions else 0,
         })
 
-    return {"metrics": metrics, "campaigns": camps, "daily": daily}
+    return {"metrics": metrics, "campaigns": camps, "daily_compact": daily_compact}
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -215,6 +249,31 @@ def fmt_x(v):
 
 def sdiv(a, b, d=0.0):
     return a / b if b else d
+
+
+def date_ranges():
+    """Retorna (atual_since, atual_until, prev_since, prev_until) como strings."""
+    today = datetime.date.today()
+    cs = today - datetime.timedelta(days=30)
+    cu = today - datetime.timedelta(days=1)
+    ps = today - datetime.timedelta(days=60)
+    pu = today - datetime.timedelta(days=31)
+    f = lambda d: d.strftime("%Y-%m-%d")
+    return f(cs), f(cu), f(ps), f(pu)
+
+
+def delta_badge(cur, prev, invert=False):
+    """Retorna (classe_css, texto) comparando com o período anterior.
+    invert=True quando menor é melhor (custos)."""
+    if not prev or prev == 0:
+        return ("neutral", "últimos 30d")
+    pct = (cur - prev) / prev * 100
+    if abs(pct) < 0.5:
+        return ("neutral", "estável vs anterior")
+    arrow = "↑" if pct > 0 else "↓"
+    good = (pct < 0) if invert else (pct > 0)
+    cls = "up" if good else "down"
+    return (cls, f"{arrow} {abs(pct):.0f}% vs período anterior")
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -333,6 +392,16 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
 .ct-cname:hover{color:var(--gold)}
 .ct-camp-tag{font-size:10px;color:var(--dim);margin-top:1px}
 .dist-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.period-bar-inline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:24px}
+.period-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);white-space:nowrap}
+.period-btns{display:flex;gap:3px;flex-wrap:wrap}
+.pbtn{padding:5px 11px;border:1px solid var(--border2);background:transparent;color:var(--muted);font-size:11px;font-weight:500;cursor:pointer;border-radius:5px;transition:all .15s;white-space:nowrap;font-family:inherit}
+.pbtn:hover{border-color:var(--gold-border);color:var(--text)}
+.pbtn.active{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
+.custom-wrap{display:none;align-items:center;gap:6px}
+.custom-wrap.show{display:flex}
+.date-inp{background:var(--surf2);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:11px;padding:4px 8px;font-family:inherit;color-scheme:dark}
+.date-apply{padding:5px 12px;background:var(--gold);border:none;border-radius:5px;color:#000;font-weight:700;font-size:11px;cursor:pointer;font-family:inherit}
 .funil-wrap{display:flex;flex-direction:column;align-items:center;gap:0;width:100%;max-width:560px;margin:0 auto}
 .funil-stage{position:relative;display:flex;align-items:center;justify-content:center;transition:transform .15s}
 .funil-stage:hover{transform:scale(1.01)}
@@ -393,12 +462,14 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
 # COMPONENTES HTML
 # ════════════════════════════════════════════════════════════════════
 
-def kcard(label, value, sub, color=""):
+def kcard(label, value, sub, color="", delta_cls="neutral", vid=""):
     c = f" {color}" if color else ""
+    id_v = f' id="{vid}"' if vid else ""
+    id_d = f' id="{vid}-d"' if vid else ""
     return f"""<div class="kcard"><div class="kcard-accent"></div>
       <div class="kcard-label">{label}</div>
-      <div class="kcard-value{c}">{value}</div>
-      <span class="kcard-delta neutral">{sub}</span>
+      <div class="kcard-value{c}"{id_v}>{value}</div>
+      <span class="kcard-delta {delta_cls}"{id_d}>{sub}</span>
     </div>"""
 
 
@@ -565,38 +636,80 @@ def page_meta_overview(account, meta, page_id, title):
     cpl = sdiv(m["spend"], m["results"])
     has_roas = account.get("has_roas", False)
 
-    cards1 = kcard("Investimento", fmt_brl(m["spend"]), "últimos 30d", "gold")
-    cards1 += kcard(result_label, fmt_num(m["results"]), "últimos 30d")
-    cards1 += kcard("Custo por Resultado", fmt_brl(cpl), "média do período", "green" if cpl < 30 else "")
+    cards1 = kcard("Investimento", fmt_brl(m["spend"]), "", "gold", vid="mSpend")
+    cards1 += kcard(result_label, fmt_num(m["results"]), "", vid="mResults")
+    cards1 += kcard("Custo por Resultado", fmt_brl(cpl), "",
+                    "green" if cpl < 30 else "", vid="mCpl")
     if has_roas:
         roas = sdiv(m["revenue"], m["spend"])
-        cards1 += kcard("Receita", fmt_brl(m["revenue"]), "vendas atribuídas", "green")
-        cards1 += kcard("ROAS", fmt_x(roas), "retorno sobre investimento", "green" if roas >= 2 else "red")
+        cards1 += kcard("Receita", fmt_brl(m["revenue"]), "", "green", vid="mRev")
+        cards1 += kcard("ROAS", fmt_x(roas), "", "green" if roas >= 2 else "red", vid="mRoas")
     else:
-        cards1 += kcard("Msgs Iniciadas", fmt_num(m["msgs"]), "últimos 30d")
-        cards1 += kcard("Custo/Mensagem", fmt_brl(sdiv(m["spend"], m["msgs"])), "últimos 30d")
+        cards1 += kcard("Msgs Iniciadas", fmt_num(m["msgs"]), "", vid="mMsgs")
+        cards1 += kcard("Custo/Mensagem", fmt_brl(sdiv(m["spend"], m["msgs"])), "", vid="mCostMsg")
 
     freq = sdiv(m["impressions"], m["reach"])
-    cards2 = kcard("Alcance", fmt_num(m["reach"]), "pessoas únicas")
-    cards2 += kcard("Impressões", fmt_num(m["impressions"]), "exibições totais")
-    cards2 += kcard("Frequência", fmt_x(freq), "⚠ alta" if freq > 3 else "impressões/pessoa", "red" if freq > 3 else "")
-    cards2 += kcard("CPM", fmt_brl(m["cpm"]), "custo por mil imp.")
+    cards2 = kcard("Alcance", fmt_num(m["reach"]), "últimos 30d (fixo)")
+    cards2 += kcard("Impressões", fmt_num(m["impressions"]), "", vid="mImp")
+    cards2 += kcard("Frequência", fmt_x(freq), "últimos 30d (fixo)", "red" if freq > 3 else "")
+    cards2 += kcard("CPM", fmt_brl(m["cpm"]), "", vid="mCpm")
 
-    cards3 = kcard("Cliques no Link", fmt_num(m["clicks"]), "últimos 30d")
-    cards3 += kcard("CTR", fmt_pct(m["ctr"]), "taxa de clique", "green" if m["ctr"] > 1.5 else "")
-    cards3 += kcard("CPC Médio", fmt_brl(m["cpc"]), "custo por clique", "green")
-    cards3 += kcard("Visualiz. Vídeo", fmt_num(m["video_views"]), "últimos 30d")
-    cards3 += kcard("ThruPlay (95%+)", fmt_num(m["thruplays"]), "assistiram até o fim")
+    cards3 = kcard("Cliques no Link", fmt_num(m["clicks"]), "", vid="mClicks")
+    cards3 += kcard("CTR", fmt_pct(m["ctr"]), "", "green" if m["ctr"] > 1.5 else "", vid="mCtr")
+    cards3 += kcard("CPC Médio", fmt_brl(m["cpc"]), "", "green", vid="mCpc")
+    cards3 += kcard("Visualiz. Vídeo", fmt_num(m["video_views"]), "últimos 30d (fixo)")
+    cards3 += kcard("ThruPlay (95%+)", fmt_num(m["thruplays"]), "últimos 30d (fixo)")
 
     return f"""
 <div id="page-{page_id}" class="page">
 <div class="page-inner">
-  <div class="sec-title"><h3>🎯 {title} — Resultados</h3><div class="sec-line"></div></div>
+  <div class="period-bar-inline">
+    <span class="period-label">Período</span>
+    <div class="period-btns">
+      <button class="pbtn" onclick="setPeriod(this,'1d')">Hoje</button>
+      <button class="pbtn" onclick="setPeriod(this,'7d')">7 dias</button>
+      <button class="pbtn active" onclick="setPeriod(this,'30d')">30 dias</button>
+      <button class="pbtn" onclick="setPeriod(this,'month')">Mês atual</button>
+      <button class="pbtn" onclick="setPeriod(this,'lmonth')">Mês passado</button>
+      <button class="pbtn" onclick="setPeriod(this,'90d')">3 meses</button>
+      <button class="pbtn" onclick="setPeriod(this,'180d')">6 meses</button>
+      <button class="pbtn" onclick="toggleCustom(this)">📅 Personalizado</button>
+    </div>
+    <div class="custom-wrap" id="customWrap">
+      <input type="date" class="date-inp" id="dateFrom">
+      <span style="color:var(--dim);font-size:11px">até</span>
+      <input type="date" class="date-inp" id="dateTo">
+      <button class="date-apply" onclick="applyCustom()">Aplicar</button>
+    </div>
+  </div>
+
+  <div class="sec-title"><h3>🎯 {title} — Resultados <span id="periodTag" style="color:var(--dim);text-transform:none;letter-spacing:0">· últimos 30 dias</span></h3><div class="sec-line"></div></div>
   <div class="kpi-grid kpi-grid-5">{cards1}</div>
   <div class="sec-title"><h3>📡 Alcance & Entrega</h3><div class="sec-line"></div></div>
   <div class="kpi-grid kpi-grid-4">{cards2}</div>
   <div class="sec-title"><h3>👆 Engajamento</h3><div class="sec-line"></div></div>
   <div class="kpi-grid kpi-grid-5">{cards3}</div>
+
+  <div class="sec-title"><h3>⚖️ Comparativo de Períodos</h3><div class="sec-line"></div></div>
+  <div class="chart-row" style="grid-template-columns:1fr">
+    <div class="chart-card">
+      <div class="chart-head" style="flex-wrap:wrap;gap:10px">
+        <span class="chart-title">Comparar períodos personalizados</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--gold);font-weight:700">A</span>
+          <input type="date" class="date-inp" id="cmpAFrom">
+          <input type="date" class="date-inp" id="cmpATo">
+          <span style="font-size:10px;color:#888;font-weight:700;margin-left:6px">B</span>
+          <input type="date" class="date-inp" id="cmpBFrom">
+          <input type="date" class="date-inp" id="cmpBTo">
+          <button class="date-apply" onclick="applyCompare()">Comparar</button>
+        </div>
+      </div>
+      <div id="cmpSummary" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
+      <div class="chart-wrap"><canvas id="chartCompare"></canvas></div>
+    </div>
+  </div>
+
   <div class="sec-title"><h3>📈 Evolução Diária</h3><div class="sec-line"></div></div>
   <div class="chart-row chart-row-2">
     <div class="chart-card">
@@ -620,11 +733,13 @@ def page_meta_overview(account, meta, page_id, title):
 
 def page_google_overview(g, page_id, title):
     m = g["metrics"]
-    cards = kcard("Investimento", fmt_brl(m["spend"]), "últimos 30d", "gold")
-    cards += kcard("Conversões", str(m["conversions"]).replace(".", ","), "últimos 30d")
-    cards += kcard("Custo/Conversão", fmt_brl(m["cost_per_conv"]), "média do período", "green" if m["cost_per_conv"] < 50 else "")
-    cards += kcard("Cliques", fmt_num(m["clicks"]), "últimos 30d")
-    cards += kcard("CTR", fmt_pct(m["ctr"]), "taxa de clique", "green" if m["ctr"] > 3 else "")
+    gp = g.get("prev", {})
+    cards = kcard_cmp("Investimento", fmt_brl(m["spend"]), m["spend"], gp.get("spend"), "gold")
+    cards += kcard_cmp("Conversões", str(m["conversions"]).replace(".", ","), m["conversions"], gp.get("conversions"))
+    cards += kcard_cmp("Custo/Conversão", fmt_brl(m["cost_per_conv"]), m["cost_per_conv"], gp.get("cost_per_conv"),
+                       "green" if m["cost_per_conv"] < 50 else "", invert=True)
+    cards += kcard_cmp("Cliques", fmt_num(m["clicks"]), m["clicks"], gp.get("clicks"))
+    cards += kcard_cmp("CTR", fmt_pct(m["ctr"]), m["ctr"], gp.get("ctr"), "green" if m["ctr"] > 3 else "")
 
     cards2 = kcard("Impressões", fmt_num(m["impressions"]), "exibições")
     cards2 += kcard("CPC Médio", fmt_brl(m["cpc"]), "custo por clique")
@@ -757,21 +872,19 @@ def page_consolidado(account, meta, g):
 </div>"""
 
 
-def page_campanhas_meta(account, meta):
-    result_label = account.get("result_label", "Resultados")
-    result_event = account.get("result_event", "lead")
+def build_camp_blocks(campaigns, result_label, result_event, ads_key="_ads"):
     blocks = ""
-    for i, c in enumerate(meta["campaigns"], 1):
-        ins   = (c.get("insights") or {}).get("data", [{}])[0]
+    for i, camp in enumerate(campaigns, 1):
+        ins   = (camp.get("insights") or {}).get("data", [{}])[0]
         spend = float(ins.get("spend", 0))
         if spend <= 0:
             continue
         res = extract_action(ins.get("actions", []), result_event)
         cpl = sdiv(spend, res)
-        obj = c.get("objective", "—").replace("OUTCOME_", "").replace("_", " ").title()
+        obj = camp.get("objective", "—").replace("OUTCOME_", "").replace("_", " ").title()
 
         ads_sorted = sorted(
-            c.get("_ads", []),
+            camp.get(ads_key, []),
             key=lambda a: extract_action((a.get("insights") or {}).get("data", [{}])[0].get("actions", []), result_event),
             reverse=True)[:3]
 
@@ -803,7 +916,7 @@ def page_campanhas_meta(account, meta):
   <div class="camp-block">
     <div class="camp-hdr">
       <div class="camp-num">{i}</div>
-      <div class="camp-name">{c.get("name","—")}</div>
+      <div class="camp-name">{camp.get("name","—")}</div>
       <span class="badge">{obj}</span>
       <span class="badge badge-blue">Meta</span>
     </div>
@@ -815,15 +928,30 @@ def page_campanhas_meta(account, meta):
     </div>
     <div class="creat-sec">
       <div class="creat-sec-title">🏆 Top Criativos</div>
-      <div class="creat-grid">{creats}</div>
+      <div class="creat-grid">{creats if creats else '<p style="color:var(--dim);font-size:12px">Sem criativos no período.</p>'}</div>
     </div>
   </div>"""
+    return blocks or '<p style="color:var(--muted)">Nenhuma campanha com investimento no período.</p>'
+
+
+def page_campanhas_meta(account, meta):
+    result_label = account.get("result_label", "Resultados")
+    result_event = account.get("result_event", "lead")
+    blocks_30 = build_camp_blocks(meta["campaigns"], result_label, result_event, "_ads")
+    blocks_90 = build_camp_blocks(meta["campaigns"], result_label, result_event, "_ads_90d")
 
     return f"""
 <div id="page-campanhas" class="page">
 <div class="page-inner">
-  <div class="sec-title"><h3>📣 Campanhas Meta Ads</h3><div class="sec-line"></div></div>
-  {blocks if blocks else '<p style="color:var(--muted)">Nenhuma campanha com investimento no período.</p>'}
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+    <div class="sec-title" style="margin:0"><h3>📣 Campanhas Meta Ads</h3></div>
+    <div style="display:flex;gap:4px">
+      <button class="pbtn active" onclick="switchCampPeriod(this,'30d')">Últimos 30 dias</button>
+      <button class="pbtn" onclick="switchCampPeriod(this,'90d')">Últimos 3 meses</button>
+    </div>
+  </div>
+  <div id="campBlocks30">{blocks_30}</div>
+  <div id="campBlocks90" style="display:none">{blocks_90}</div>
 </div>
 </div>"""
 
@@ -865,21 +993,63 @@ def page_criativos_meta(account, meta):
       <div class="ct-td"><a href="{a["prev"]}" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
     </div>"""
 
+    # 90d rows
+    all_ads_90 = []
+    for camp in meta["campaigns"]:
+        for ad in camp.get("_ads_90d", []):
+            ai = (ad.get("insights") or {}).get("data", [{}])[0]
+            a_spend = float(ai.get("spend", 0))
+            if a_spend <= 0:
+                continue
+            a_res = extract_action(ai.get("actions", []), result_event)
+            all_ads_90.append({
+                "name": ad.get("name", "—"), "spend": a_spend, "res": a_res,
+                "cpl": sdiv(a_spend, a_res), "ctr": float(ai.get("ctr", 0)),
+                "prev": ad.get("preview_shareable_link", "#"), "camp": camp.get("name", "—"),
+            })
+    all_ads_90.sort(key=lambda x: x["res"], reverse=True)
+
+    rows_90 = ""
+    for a in all_ads_90:
+        cls = 'style="color:var(--green);font-weight:700"' if a["cpl"] and a["cpl"] < 20 else               ('style="color:var(--red);font-weight:700"' if a["cpl"] > 35 else 'style="font-weight:700"')
+        rows_90 += f"""
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="{a["prev"]}" target="_blank" class="ct-cname">{a["name"]}</a>
+          <div class="ct-camp-tag">{a["camp"][:45]}</div>
+        </div>
+      </div>
+      <div class="ct-td">{fmt_brl(a["spend"])}</div>
+      <div class="ct-td" style="font-weight:700">{fmt_num(a["res"])}</div>
+      <div class="ct-td" {cls}>{fmt_brl(a["cpl"])}</div>
+      <div class="ct-td">{fmt_pct(a["ctr"])}</div>
+      <div class="ct-td"><a href="{a["prev"]}" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>"""
+
+    def table_wrap(r):
+        return f"""<div class="creat-table">
+    <div class="ct-head">
+      <div class="ct-th">Criativo</div><div class="ct-th">Invest.</div>
+      <div class="ct-th">Resultados</div><div class="ct-th">Custo/Res.</div>
+      <div class="ct-th">CTR</div><div class="ct-th">Prévia</div>
+    </div>
+    {r or '<div style="padding:20px;color:var(--muted)">Sem criativos.</div>'}
+  </div>"""
+
     return f"""
 <div id="page-criativos" class="page">
 <div class="page-inner">
-  <div class="sec-title"><h3>🎨 Ranking de Criativos — Meta Ads</h3><div class="sec-line"></div></div>
-  <div class="creat-table">
-    <div class="ct-head">
-      <div class="ct-th">Criativo</div>
-      <div class="ct-th">Invest.</div>
-      <div class="ct-th">Resultados</div>
-      <div class="ct-th">Custo/Res.</div>
-      <div class="ct-th">CTR</div>
-      <div class="ct-th">Prévia</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+    <div class="sec-title" style="margin:0"><h3>🎨 Ranking de Criativos — Meta Ads</h3></div>
+    <div style="display:flex;gap:4px">
+      <button class="pbtn active" onclick="switchCreatPeriod(this,'30d')">30 dias</button>
+      <button class="pbtn" onclick="switchCreatPeriod(this,'90d')">3 meses</button>
     </div>
-    {rows if rows else '<div style="padding:20px;color:var(--muted)">Sem criativos com investimento no período.</div>'}
   </div>
+  <div id="creatTable30">{table_wrap(rows)}</div>
+  <div id="creatTable90" style="display:none">{table_wrap(rows_90)}</div>
 </div>
 </div>"""
 
@@ -952,7 +1122,7 @@ def render(account, meta, g):
     dual = has_meta and has_goog
     result_label = account.get("result_label", "Resultados")
     result_event = account.get("result_event", "lead")
-    now = datetime.datetime.now().strftime("%d/%m · %H:%M")
+    now = (datetime.datetime.utcnow() - datetime.timedelta(hours=3)).strftime("%d/%m · %H:%M")
     logo = f"data:image/png;base64,{LOGO_B64}" if LOGO_B64 else ""
 
     # ── TABS ──
@@ -1002,25 +1172,12 @@ def render(account, meta, g):
     # ── JS DATA ──
     js = ""
     if has_meta:
-        dias, inv, res = [], [], []
-        for d in sorted(meta["daily"], key=lambda x: x["date_start"]):
-            dt = datetime.datetime.strptime(d["date_start"], "%Y-%m-%d")
-            dias.append(dt.strftime("%d/%m"))
-            inv.append(round(float(d.get("spend", 0)), 2))
-            res.append(extract_action(d.get("actions", []), result_event))
         m = meta["metrics"]
+        dc = meta.get("daily_compact", [])
         js += f"""
-  new Chart(document.getElementById('chartMetaDaily'),{{type:'line',data:{{labels:{json.dumps(dias)},datasets:[
-    {{label:'Investimento',data:{json.dumps(inv)},borderColor:'#F5A623',backgroundColor:'rgba(245,166,35,.07)',tension:.4,fill:true,pointRadius:2,yAxisID:'y'}},
-    {{label:'{result_label}',data:{json.dumps(res)},borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.07)',tension:.4,fill:true,pointRadius:2,yAxisID:'y1'}}]}},
-    options:{{responsive:true,maintainAspectRatio:false,interaction:{{mode:'index',intersect:false}},plugins:{{legend:{{display:false}}}},
-    scales:{{x:{{grid:{{color:'rgba(255,255,255,.04)'}},ticks:{{color:'#555',font:{{size:10}}}}}},
-    y:{{position:'left',grid:{{color:'rgba(255,255,255,.04)'}},ticks:{{color:'#F5A623',font:{{size:10}},callback:v=>'R$'+v}}}},
-    y1:{{position:'right',grid:{{drawOnChartArea:false}},ticks:{{color:'#22c55e',font:{{size:10}}}}}}}}}}}});
-  new Chart(document.getElementById('chartMetaMix'),{{type:'doughnut',data:{{
-    labels:['{result_label}','Cliques s/ conversão'],
-    datasets:[{{data:[{m["results"]},{max(0, m["clicks"] - m["results"])}],backgroundColor:['#22c55e','#2a2a2a'],borderWidth:0,hoverOffset:6}}]}},
-    options:{{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{{legend:{{position:'bottom',labels:{{color:'#666',font:{{size:10}},padding:12,boxWidth:8,boxHeight:8}}}}}}}}}});"""
+  const DM = {json.dumps(dc)};
+  const HAS_ROAS = {str(account.get("has_roas", False)).lower()};
+  const RESULT_LABEL = {json.dumps(result_label)};"""
 
         if dist_labels:
             js += f"""
@@ -1029,12 +1186,181 @@ def render(account, meta, g):
     datasets:[{{data:{json.dumps(dist_values)},backgroundColor:['#F5A623','#3b82f6','#22c55e','#a855f7','#ef4444','#06b6d4','#f97316'],borderWidth:0,hoverOffset:6}}]}},
     options:{{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{{legend:{{position:'bottom',labels:{{color:'#888',font:{{size:10}},padding:10,boxWidth:8,boxHeight:8}}}}}}}}}});"""
 
+        js += """
+  // ════ MOTOR DE PERÍODOS ════
+  const fmtBRL = v => v >= 1000 ? 'R$ ' + Math.round(v).toLocaleString('pt-BR') : 'R$ ' + v.toFixed(2).replace('.', ',');
+  const fmtNum = v => Math.round(v).toLocaleString('pt-BR');
+  const fmtPct = v => v.toFixed(2).replace('.', ',') + '%';
+  const fmtX   = v => v.toFixed(2).replace('.', ',') + '×';
+  const dstr   = d => d.toISOString().slice(0, 10);
+
+  function sumRange(from, to) {
+    const acc = { s: 0, r: 0, m: 0, p: 0, v: 0, c: 0, i: 0 };
+    for (const row of DM) {
+      if (row.d >= from && row.d <= to) {
+        acc.s += row.s; acc.r += row.r; acc.m += row.m;
+        acc.p += row.p; acc.v += row.v; acc.c += row.c; acc.i += row.i;
+      }
+    }
+    return acc;
+  }
+
+  function setText(id, txt) { const el = document.getElementById(id); if (el) el.textContent = txt; }
+
+  function setDelta(id, cur, prev, invert) {
+    const el = document.getElementById(id + '-d');
+    if (!el) return;
+    if (!prev) { el.textContent = 'sem base de comparação'; el.className = 'kcard-delta neutral'; return; }
+    const pct = (cur - prev) / prev * 100;
+    if (Math.abs(pct) < 0.5) { el.textContent = 'estável vs período anterior'; el.className = 'kcard-delta neutral'; return; }
+    const good = invert ? pct < 0 : pct > 0;
+    el.textContent = (pct > 0 ? '↑ ' : '↓ ') + Math.abs(pct).toFixed(0) + '% vs período anterior';
+    el.className = 'kcard-delta ' + (good ? 'up' : 'down');
+  }
+
+  let chMetaDaily = null, chMetaMix = null, chCompare = null;
+
+  function applyRange(from, to, label) {
+    const cur = sumRange(from, to);
+    const days = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
+    const pTo = new Date(new Date(from) - 86400000);
+    const pFrom = new Date(pTo - (days - 1) * 86400000);
+    const prev = sumRange(dstr(pFrom), dstr(pTo));
+
+    setText('mSpend', fmtBRL(cur.s));            setDelta('mSpend', cur.s, prev.s, false);
+    setText('mResults', fmtNum(cur.r));          setDelta('mResults', cur.r, prev.r, false);
+    const cpl = cur.r ? cur.s / cur.r : 0, pcpl = prev.r ? prev.s / prev.r : 0;
+    setText('mCpl', fmtBRL(cpl));                setDelta('mCpl', cpl, pcpl, true);
+    if (HAS_ROAS) {
+      setText('mRev', fmtBRL(cur.v));            setDelta('mRev', cur.v, prev.v, false);
+      const roas = cur.s ? cur.v / cur.s : 0, proas = prev.s ? prev.v / prev.s : 0;
+      setText('mRoas', fmtX(roas));              setDelta('mRoas', roas, proas, false);
+    } else {
+      setText('mMsgs', fmtNum(cur.m));           setDelta('mMsgs', cur.m, prev.m, false);
+      const cm = cur.m ? cur.s / cur.m : 0, pcm = prev.m ? prev.s / prev.m : 0;
+      setText('mCostMsg', fmtBRL(cm));           setDelta('mCostMsg', cm, pcm, true);
+    }
+    setText('mImp', fmtNum(cur.i));              setDelta('mImp', cur.i, prev.i, false);
+    const cpm = cur.i ? cur.s / cur.i * 1000 : 0, pcpm = prev.i ? prev.s / prev.i * 1000 : 0;
+    setText('mCpm', fmtBRL(cpm));                setDelta('mCpm', cpm, pcpm, true);
+    setText('mClicks', fmtNum(cur.c));           setDelta('mClicks', cur.c, prev.c, false);
+    const ctr = cur.i ? cur.c / cur.i * 100 : 0, pctr = prev.i ? prev.c / prev.i * 100 : 0;
+    setText('mCtr', fmtPct(ctr));                setDelta('mCtr', ctr, pctr, false);
+    const cpc = cur.c ? cur.s / cur.c : 0, pcpc = prev.c ? prev.s / prev.c : 0;
+    setText('mCpc', fmtBRL(cpc));                setDelta('mCpc', cpc, pcpc, true);
+    setText('periodTag', '· ' + label);
+
+    // Gráfico de evolução
+    const rows = DM.filter(x => x.d >= from && x.d <= to);
+    const labels = rows.map(x => x.d.slice(8) + '/' + x.d.slice(5, 7));
+    if (chMetaDaily) {
+      chMetaDaily.data.labels = labels;
+      chMetaDaily.data.datasets[0].data = rows.map(x => x.s);
+      chMetaDaily.data.datasets[1].data = rows.map(x => x.r);
+      chMetaDaily.update();
+    }
+    if (chMetaMix) {
+      chMetaMix.data.datasets[0].data = [cur.r, Math.max(0, cur.c - cur.r)];
+      chMetaMix.update();
+    }
+    // Comparativo padrão: atual vs anterior
+    updateCompare(cur, prev, label, 'período anterior equivalente');
+  }
+
+  function updateCompare(a, b, labelA, labelB) {
+    if (!chCompare) return;
+    chCompare.data.datasets[0].data = [Math.round(a.s * 100) / 100, a.r];
+    chCompare.data.datasets[1].data = [Math.round(b.s * 100) / 100, b.r];
+    chCompare.update();
+    const cplA = a.r ? a.s / a.r : 0, cplB = b.r ? b.s / b.r : 0;
+    const diff = b.r ? ((a.r - b.r) / b.r * 100).toFixed(0) : '—';
+    document.getElementById('cmpSummary').innerHTML =
+      '<b style="color:var(--gold)">' + labelA + ':</b> ' + fmtBRL(a.s) + ' · ' + fmtNum(a.r) + ' ' + RESULT_LABEL.toLowerCase() +
+      ' (custo ' + fmtBRL(cplA) + ') &nbsp;•&nbsp; <b style="color:#888">' + labelB + ':</b> ' + fmtBRL(b.s) + ' · ' +
+      fmtNum(b.r) + ' (custo ' + fmtBRL(cplB) + ') &nbsp;•&nbsp; variação de resultados: <b>' + diff + '%</b>';
+  }
+
+  function applyCompare() {
+    const af = document.getElementById('cmpAFrom').value, at = document.getElementById('cmpATo').value;
+    const bf = document.getElementById('cmpBFrom').value, bt = document.getElementById('cmpBTo').value;
+    if (!(af && at && bf && bt)) return;
+    updateCompare(sumRange(af, at), sumRange(bf, bt),
+                  'Período A (' + af.slice(8) + '/' + af.slice(5,7) + '–' + at.slice(8) + '/' + at.slice(5,7) + ')',
+                  'Período B (' + bf.slice(8) + '/' + bf.slice(5,7) + '–' + bt.slice(8) + '/' + bt.slice(5,7) + ')');
+  }
+
+  function setPeriod(btn, key) {
+    document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrap').classList.remove('show');
+    const today = new Date();
+    let from, to = dstr(today), label;
+    if (key === '1d')      { from = to; label = 'hoje'; }
+    else if (key === '7d') { from = dstr(new Date(today - 6 * 86400000)); label = 'últimos 7 dias'; }
+    else if (key === '30d'){ from = dstr(new Date(today - 29 * 86400000)); label = 'últimos 30 dias'; }
+    else if (key === '90d'){ from = dstr(new Date(today - 89 * 86400000)); label = 'últimos 3 meses'; }
+    else if (key === '180d'){ from = dstr(new Date(today - 179 * 86400000)); label = 'últimos 6 meses'; }
+    else if (key === 'month') { from = to.slice(0, 8) + '01'; label = 'mês atual'; }
+    else if (key === 'lmonth') {
+      const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      from = dstr(d);
+      to = dstr(new Date(today.getFullYear(), today.getMonth(), 0));
+      label = 'mês passado';
+    }
+    applyRange(from, to, label);
+  }
+
+  function toggleCustom(btn) {
+    document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrap').classList.toggle('show');
+  }
+
+  function applyCustom() {
+    const f = document.getElementById('dateFrom').value, t = document.getElementById('dateTo').value;
+    if (f && t) applyRange(f, t, f.slice(8) + '/' + f.slice(5,7) + ' a ' + t.slice(8) + '/' + t.slice(5,7));
+  }
+
+  // ── Inicialização dos gráficos Meta ──
+  chMetaDaily = new Chart(document.getElementById('chartMetaDaily'), { type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Investimento', data: [], borderColor: '#F5A623', backgroundColor: 'rgba(245,166,35,.07)', tension: .4, fill: true, pointRadius: 2, yAxisID: 'y' },
+      { label: RESULT_LABEL, data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,.07)', tension: .4, fill: true, pointRadius: 2, yAxisID: 'y1' }]},
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#555', font: { size: 10 }, maxTicksLimit: 15 } },
+        y: { position: 'left', grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#F5A623', font: { size: 10 }, callback: v => 'R$' + v } },
+        y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#22c55e', font: { size: 10 } } } } } });
+
+  chMetaMix = new Chart(document.getElementById('chartMetaMix'), { type: 'doughnut',
+    data: { labels: [RESULT_LABEL, 'Cliques s/ conversão'],
+      datasets: [{ data: [0, 0], backgroundColor: ['#22c55e', '#2a2a2a'], borderWidth: 0, hoverOffset: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '68%',
+      plugins: { legend: { position: 'bottom', labels: { color: '#666', font: { size: 10 }, padding: 12, boxWidth: 8, boxHeight: 8 } } } } });
+
+  chCompare = new Chart(document.getElementById('chartCompare'), { type: 'bar',
+    data: { labels: ['Investimento (R$)', RESULT_LABEL],
+      datasets: [
+        { label: 'A', data: [0, 0], backgroundColor: '#F5A623', borderRadius: 6, barPercentage: .6 },
+        { label: 'B', data: [0, 0], backgroundColor: '#444', borderRadius: 6, barPercentage: .6 }]},
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#666', font: { size: 10 } } },
+        y: { grid: { display: false }, ticks: { color: '#888', font: { size: 11, weight: '600' } } } } } });
+
+  // Estado inicial: últimos 30 dias
+  const _t = new Date();
+  applyRange(dstr(new Date(_t - 29 * 86400000)), dstr(_t), 'últimos 30 dias');
+"""
+
     if has_goog:
-        gdias = [datetime.datetime.strptime(d["date"], "%Y-%m-%d").strftime("%d/%m") for d in g["daily"]]
-        ginv  = [round(d["spend"], 2) for d in g["daily"]]
-        gconv = [round(d["conversions"], 1) for d in g["daily"]]
-        gcamp_labels = [c["name"][:28] for c in g["campaigns"][:6]]
-        gcamp_spend  = [round(c["spend"], 2) for c in g["campaigns"][:6]]
+        gdc = g.get("daily_compact", [])
+        gm = g["metrics"]
+        gcamp_labels = [cc["name"][:28] for cc in g["campaigns"][:6]]
+        gcamp_spend  = [round(cc["spend"], 2) for cc in g["campaigns"][:6]]
+        gdias = [d["d"][8:] + "/" + d["d"][5:7] for d in gdc[-30:]]
+        ginv  = [d["s"] for d in gdc[-30:]]
+        gconv = [d["cv"] for d in gdc[-30:]]
         js += f"""
   new Chart(document.getElementById('chartGoogleDaily'),{{type:'line',data:{{labels:{json.dumps(gdias)},datasets:[
     {{label:'Investimento',data:{json.dumps(ginv)},borderColor:'#F5A623',backgroundColor:'rgba(245,166,35,.07)',tension:.4,fill:true,pointRadius:2,yAxisID:'y'}},
@@ -1049,15 +1375,10 @@ def render(account, meta, g):
     options:{{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{{legend:{{position:'bottom',labels:{{color:'#888',font:{{size:10}},padding:10,boxWidth:8,boxHeight:8}}}}}}}}}});"""
 
     if dual:
-        # Consolidado: somar dias
-        meta_by_day = {}
-        for d in meta["daily"]:
-            meta_by_day[d["date_start"]] = float(d.get("spend", 0))
-        goog_by_day = {}
-        for d in g["daily"]:
-            goog_by_day[d["date"]] = d["spend"]
+        meta_by_day = {d["d"]: d["s"] for d in meta.get("daily_compact", [])[-30:]}
+        goog_by_day = {d["d"]: d["s"] for d in g.get("daily_compact", [])[-30:]}
         all_days = sorted(set(list(meta_by_day.keys()) + list(goog_by_day.keys())))
-        cdias = [datetime.datetime.strptime(d, "%Y-%m-%d").strftime("%d/%m") for d in all_days]
+        cdias = [d[8:] + "/" + d[5:7] for d in all_days]
         cmeta = [round(meta_by_day.get(d, 0), 2) for d in all_days]
         cgoog = [round(goog_by_day.get(d, 0), 2) for d in all_days]
         mm, gm = meta["metrics"], g["metrics"]
@@ -1097,6 +1418,18 @@ def render(account, meta, g):
 </nav>
 {pages}
 <script>
+function switchCampPeriod(btn, p) {{
+  document.querySelectorAll('#page-campanhas .pbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('campBlocks30').style.display = p === '30d' ? '' : 'none';
+  document.getElementById('campBlocks90').style.display = p === '90d' ? '' : 'none';
+}}
+function switchCreatPeriod(btn, p) {{
+  document.querySelectorAll('#page-criativos .pbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('creatTable30').style.display = p === '30d' ? '' : 'none';
+  document.getElementById('creatTable90').style.display = p === '90d' ? '' : 'none';
+}}
 function showPage(id,btn){{
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
