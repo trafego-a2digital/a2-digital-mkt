@@ -1,0 +1,27 @@
+{
+  "contas": [
+    {
+      "nome": "Dr. Flávius Cabral",
+      "account_id": "3576573649250348",
+      "ativo": true
+    },
+    {
+      "nome": "Stimma Clay",
+      "account_id": "208064071916203",
+      "ativo": true
+    },
+    {
+      "nome": "Dr. Tiago Alcântara",
+      "account_id": "2130371487349249",
+      "ativo": true
+    }
+  ],
+  "limites": {
+    "variacao_cpl_alerta_pct": 40,
+    "variacao_gasto_alerta_pct": 50,
+    "frequencia_saturacao": 3.0,
+    "queda_ctr_saturacao_pct": 30,
+    "gasto_minimo_analise": 5.0
+  },
+  "logo_path": "assets/logo_a2.png"
+}
