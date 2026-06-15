@@ -1455,7 +1455,7 @@ def main():
     cname_path = OUT_DIR / "CNAME"
     if not cname_path.exists():
         with open(cname_path, "w") as f:
-            f.write("dash.a2digitalmkt.com.br")
+            f.write("dashboard.a2digitalmkt.com.br")
         print("  ✓ CNAME gerado")
 
     for account in ACCOUNTS:
