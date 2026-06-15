@@ -1451,6 +1451,13 @@ def main():
     print(f"Gerando dashboards para {len(ACCOUNTS)} contas...")
     ok, fail = 0, 0
 
+    # Garantir CNAME para domínio customizado
+    cname_path = OUT_DIR / "CNAME"
+    if not cname_path.exists():
+        with open(cname_path, "w") as f:
+            f.write("dash.a2digitalmkt.com.br")
+        print("  ✓ CNAME gerado")
+
     for account in ACCOUNTS:
         platforms = account.get("platforms", ["meta"])
         slug = account["slug"]
