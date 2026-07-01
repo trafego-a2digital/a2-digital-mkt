@@ -842,9 +842,10 @@ def page_consolidado(account, meta, g):
     blended_cost  = sdiv(total_spend, total_results)
     result_label  = account.get("result_label", "Resultados")
 
-    cards = kcard("Investimento Total", fmt_brl(total_spend), "Meta + Google · 30d", "gold")
-    cards += kcard("Resultados Totais", fmt_num(int(total_results)), f"{result_label} + conversões Google")
-    cards += kcard("Custo Médio Geral", fmt_brl(blended_cost), "blended das 2 plataformas", "green" if blended_cost < 40 else "")
+    cards = kcard("Investimento Total", fmt_brl(total_spend), "", "gold", vid="cSpend")
+    cards += kcard("Resultados Totais", fmt_num(int(total_results)), "", vid="cResults")
+    cards += kcard("Custo Médio Geral", fmt_brl(blended_cost), "",
+                   "green" if blended_cost < 40 else "", vid="cBlended")
 
     pct_meta = sdiv(mm["spend"], total_spend) * 100
     pct_goog = 100 - pct_meta
@@ -852,34 +853,54 @@ def page_consolidado(account, meta, g):
     return f"""
 <div id="page-consolidado" class="page active">
 <div class="page-inner">
-  <div class="sec-title"><h3>🌐 Visão Consolidada — Meta + Google</h3><div class="sec-line"></div></div>
+  <div class="period-bar-inline">
+    <span class="period-label">Período</span>
+    <div class="period-btns">
+      <button class="pbtn" onclick="setPeriodC(this,'1d')">Hoje</button>
+      <button class="pbtn" onclick="setPeriodC(this,'7d')">7 dias</button>
+      <button class="pbtn active" onclick="setPeriodC(this,'30d')">30 dias</button>
+      <button class="pbtn" onclick="setPeriodC(this,'month')">Mês atual</button>
+      <button class="pbtn" onclick="setPeriodC(this,'lmonth')">Mês passado</button>
+      <button class="pbtn" onclick="setPeriodC(this,'90d')">3 meses</button>
+      <button class="pbtn" onclick="setPeriodC(this,'180d')">6 meses</button>
+      <button class="pbtn" onclick="toggleCustomC(this)">📅 Personalizado</button>
+    </div>
+    <div class="custom-wrap" id="customWrapC">
+      <input type="date" class="date-inp" id="dateFromC">
+      <span style="color:var(--dim);font-size:11px">até</span>
+      <input type="date" class="date-inp" id="dateToC">
+      <button class="date-apply" onclick="applyCustomC()">Aplicar</button>
+    </div>
+  </div>
+
+  <div class="sec-title"><h3>🌐 Visão Consolidada — Meta + Google <span id="periodTagC" style="color:var(--dim);text-transform:none;letter-spacing:0">· últimos 30 dias</span></h3><div class="sec-line"></div></div>
   <div class="kpi-grid kpi-grid-3">{cards}</div>
 
   <div class="plat-split">
     <div class="plat-card">
       <div class="plat-card-hdr">
         <span class="badge badge-blue">Meta Ads</span>
-        <span class="plat-card-title" style="color:var(--blue)">{fmt_pct(pct_meta)} do investimento</span>
+        <span class="plat-card-title" style="color:var(--blue)" id="cPctMeta">{fmt_pct(pct_meta)} do investimento</span>
       </div>
       <div class="plat-rows">
-        <div class="plat-row"><span class="plat-row-label">Investimento</span><span class="plat-row-val">{fmt_brl(mm["spend"])}</span></div>
-        <div class="plat-row"><span class="plat-row-label">{result_label}</span><span class="plat-row-val">{fmt_num(mm["results"])}</span></div>
-        <div class="plat-row"><span class="plat-row-label">Custo por Resultado</span><span class="plat-row-val">{fmt_brl(sdiv(mm["spend"], mm["results"]))}</span></div>
-        <div class="plat-row"><span class="plat-row-label">Cliques</span><span class="plat-row-val">{fmt_num(mm["clicks"])}</span></div>
-        <div class="plat-row"><span class="plat-row-label">CTR</span><span class="plat-row-val">{fmt_pct(mm["ctr"])}</span></div>
+        <div class="plat-row"><span class="plat-row-label">Investimento</span><span class="plat-row-val" id="cMetaSpend">{fmt_brl(mm["spend"])}</span></div>
+        <div class="plat-row"><span class="plat-row-label">{result_label}</span><span class="plat-row-val" id="cMetaResults">{fmt_num(mm["results"])}</span></div>
+        <div class="plat-row"><span class="plat-row-label">Custo por Resultado</span><span class="plat-row-val" id="cMetaCpl">{fmt_brl(sdiv(mm["spend"], mm["results"]))}</span></div>
+        <div class="plat-row"><span class="plat-row-label">Cliques</span><span class="plat-row-val" id="cMetaClicks">{fmt_num(mm["clicks"])}</span></div>
+        <div class="plat-row"><span class="plat-row-label">CTR</span><span class="plat-row-val" id="cMetaCtr">{fmt_pct(mm["ctr"])}</span></div>
       </div>
     </div>
     <div class="plat-card">
       <div class="plat-card-hdr">
         <span class="badge badge-green">Google Ads</span>
-        <span class="plat-card-title" style="color:var(--green)">{fmt_pct(pct_goog)} do investimento</span>
+        <span class="plat-card-title" style="color:var(--green)" id="cPctGoog">{fmt_pct(pct_goog)} do investimento</span>
       </div>
       <div class="plat-rows">
-        <div class="plat-row"><span class="plat-row-label">Investimento</span><span class="plat-row-val">{fmt_brl(gm["spend"])}</span></div>
-        <div class="plat-row"><span class="plat-row-label">Conversões</span><span class="plat-row-val">{str(gm["conversions"]).replace(".", ",")}</span></div>
-        <div class="plat-row"><span class="plat-row-label">Custo por Conversão</span><span class="plat-row-val">{fmt_brl(gm["cost_per_conv"])}</span></div>
-        <div class="plat-row"><span class="plat-row-label">Cliques</span><span class="plat-row-val">{fmt_num(gm["clicks"])}</span></div>
-        <div class="plat-row"><span class="plat-row-label">CTR</span><span class="plat-row-val">{fmt_pct(gm["ctr"])}</span></div>
+        <div class="plat-row"><span class="plat-row-label">Investimento</span><span class="plat-row-val" id="cGoogSpend">{fmt_brl(gm["spend"])}</span></div>
+        <div class="plat-row"><span class="plat-row-label">Conversões</span><span class="plat-row-val" id="cGoogConv">{str(gm["conversions"]).replace(".", ",")}</span></div>
+        <div class="plat-row"><span class="plat-row-label">Custo por Conversão</span><span class="plat-row-val" id="cGoogCpc">{fmt_brl(gm["cost_per_conv"])}</span></div>
+        <div class="plat-row"><span class="plat-row-label">Cliques</span><span class="plat-row-val" id="cGoogClicks">{fmt_num(gm["clicks"])}</span></div>
+        <div class="plat-row"><span class="plat-row-label">CTR</span><span class="plat-row-val" id="cGoogCtr">{fmt_pct(gm["ctr"])}</span></div>
       </div>
     </div>
   </div>
@@ -1404,24 +1425,123 @@ def render(account, meta, g):
     options:{{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{{legend:{{position:'bottom',labels:{{color:'#888',font:{{size:10}},padding:10,boxWidth:8,boxHeight:8}}}}}}}}}});"""
 
     if dual:
-        meta_by_day = {d["d"]: d["s"] for d in meta.get("daily_compact", [])[-30:]}
-        goog_by_day = {d["d"]: d["s"] for d in g.get("daily_compact", [])[-30:]}
+        result_event = account.get("result_event", "lead")
+        # Séries completas (não só 30 dias) para o motor de período
+        DM_full = meta.get("daily_compact", [])
+        DG_full = g.get("daily_compact", [])
+        # Últimos 30 dias para o gráfico empilhado inicial
+        meta_by_day = {d["d"]: d["s"] for d in DM_full[-30:]}
+        goog_by_day = {d["d"]: d["s"] for d in DG_full[-30:]}
         all_days = sorted(set(list(meta_by_day.keys()) + list(goog_by_day.keys())))
         cdias = [d[8:] + "/" + d[5:7] for d in all_days]
         cmeta = [round(meta_by_day.get(d, 0), 2) for d in all_days]
         cgoog = [round(goog_by_day.get(d, 0), 2) for d in all_days]
         mm, gm = meta["metrics"], g["metrics"]
         js += f"""
-  new Chart(document.getElementById('chartConsolidadoDaily'),{{type:'bar',data:{{labels:{json.dumps(cdias)},datasets:[
+  const DM_C = {json.dumps(DM_full)};
+  const DG_C = {json.dumps(DG_full)};
+  const RESULT_LABEL_C = {json.dumps(result_label)};
+
+  let chConsDaily = null, chConsSplit = null;
+
+  chConsDaily = new Chart(document.getElementById('chartConsolidadoDaily'),{{type:'bar',data:{{labels:{json.dumps(cdias)},datasets:[
     {{label:'Meta Ads',data:{json.dumps(cmeta)},backgroundColor:'#3b82f6',stack:'s'}},
     {{label:'Google Ads',data:{json.dumps(cgoog)},backgroundColor:'#22c55e',stack:'s'}}]}},
     options:{{responsive:true,maintainAspectRatio:false,plugins:{{legend:{{position:'bottom',labels:{{color:'#888',font:{{size:10}},boxWidth:10,boxHeight:10}}}}}},
     scales:{{x:{{stacked:true,grid:{{display:false}},ticks:{{color:'#555',font:{{size:9}}}}}},
     y:{{stacked:true,grid:{{color:'rgba(255,255,255,.04)'}},ticks:{{color:'#666',font:{{size:10}},callback:v=>'R$'+v}}}}}}}}}});
-  new Chart(document.getElementById('chartSplit'),{{type:'doughnut',data:{{
+  chConsSplit = new Chart(document.getElementById('chartSplit'),{{type:'doughnut',data:{{
     labels:['Meta Ads','Google Ads'],
     datasets:[{{data:[{round(mm["spend"],2)},{round(gm["spend"],2)}],backgroundColor:['#3b82f6','#22c55e'],borderWidth:0,hoverOffset:6}}]}},
-    options:{{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{{legend:{{position:'bottom',labels:{{color:'#888',font:{{size:11}},padding:14,boxWidth:10,boxHeight:10}}}}}}}}}});"""
+    options:{{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{{legend:{{position:'bottom',labels:{{color:'#888',font:{{size:11}},padding:14,boxWidth:10,boxHeight:10}}}}}}}}}});
+
+  function sumMetaRange(from, to) {{
+    const acc = {{ s: 0, r: 0, c: 0, i: 0 }};
+    for (const row of DM_C) if (row.d >= from && row.d <= to) {{ acc.s += row.s; acc.r += row.r; acc.c += row.c; acc.i += row.i; }}
+    return acc;
+  }}
+  function sumGoogRange(from, to) {{
+    const acc = {{ s: 0, cv: 0, c: 0, i: 0 }};
+    for (const row of DG_C) if (row.d >= from && row.d <= to) {{ acc.s += row.s; acc.cv += row.cv; acc.c += row.c; acc.i += row.i; }}
+    return acc;
+  }}
+
+  function applyRangeC(from, to, label) {{
+    const cm = sumMetaRange(from, to);
+    const cg = sumGoogRange(from, to);
+    const totalSpend = cm.s + cg.s;
+    const totalRes = cm.r + cg.r;
+    const blended = totalRes ? totalSpend / totalRes : 0;
+
+    setText('cSpend', fmtBRL(totalSpend));
+    setText('cResults', fmtNum(totalRes));
+    setText('cBlended', fmtBRL(blended));
+    setText('periodTagC', '· ' + label);
+
+    const pctMeta = totalSpend ? (cm.s / totalSpend * 100) : 0;
+    const pctGoog = 100 - pctMeta;
+    setText('cPctMeta', fmtPct(pctMeta) + ' do investimento');
+    setText('cPctGoog', fmtPct(pctGoog) + ' do investimento');
+
+    setText('cMetaSpend', fmtBRL(cm.s));
+    setText('cMetaResults', fmtNum(cm.r));
+    setText('cMetaCpl', fmtBRL(cm.r ? cm.s / cm.r : 0));
+    setText('cMetaClicks', fmtNum(cm.c));
+    setText('cMetaCtr', fmtPct(cm.i ? cm.c / cm.i * 100 : 0));
+
+    setText('cGoogSpend', fmtBRL(cg.s));
+    setText('cGoogConv', cg.cv.toFixed(1).replace('.', ','));
+    setText('cGoogCpc', fmtBRL(cg.cv ? cg.s / cg.cv : 0));
+    setText('cGoogClicks', fmtNum(cg.c));
+    setText('cGoogCtr', fmtPct(cg.i ? cg.c / cg.i * 100 : 0));
+
+    // Gráficos
+    const daysM = {{}}; DM_C.filter(x => x.d >= from && x.d <= to).forEach(x => daysM[x.d] = x.s);
+    const daysG = {{}}; DG_C.filter(x => x.d >= from && x.d <= to).forEach(x => daysG[x.d] = x.s);
+    const allDays = Array.from(new Set([...Object.keys(daysM), ...Object.keys(daysG)])).sort();
+    const labels = allDays.map(d => d.slice(8) + '/' + d.slice(5,7));
+    if (chConsDaily) {{
+      chConsDaily.data.labels = labels;
+      chConsDaily.data.datasets[0].data = allDays.map(d => daysM[d] || 0);
+      chConsDaily.data.datasets[1].data = allDays.map(d => daysG[d] || 0);
+      chConsDaily.update();
+    }}
+    if (chConsSplit) {{
+      chConsSplit.data.datasets[0].data = [Math.round(cm.s*100)/100, Math.round(cg.s*100)/100];
+      chConsSplit.update();
+    }}
+  }}
+
+  function setPeriodC(btn, key) {{
+    document.querySelectorAll('#page-consolidado .pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrapC').classList.remove('show');
+    const today = new Date();
+    let from, to = dstr(today), label;
+    if (key === '1d')      {{ from = to; label = 'hoje'; }}
+    else if (key === '7d') {{ from = dstr(new Date(today - 6 * 86400000)); label = 'últimos 7 dias'; }}
+    else if (key === '30d'){{ from = dstr(new Date(today - 29 * 86400000)); label = 'últimos 30 dias'; }}
+    else if (key === '90d'){{ from = dstr(new Date(today - 89 * 86400000)); label = 'últimos 3 meses'; }}
+    else if (key === '180d'){{ from = dstr(new Date(today - 179 * 86400000)); label = 'últimos 6 meses'; }}
+    else if (key === 'month') {{ from = to.slice(0, 8) + '01'; label = 'mês atual'; }}
+    else if (key === 'lmonth') {{
+      const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      from = dstr(d);
+      to = dstr(new Date(today.getFullYear(), today.getMonth(), 0));
+      label = 'mês passado';
+    }}
+    applyRangeC(from, to, label);
+  }}
+  function toggleCustomC(btn) {{
+    document.querySelectorAll('#page-consolidado .pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrapC').classList.toggle('show');
+  }}
+  function applyCustomC() {{
+    const f = document.getElementById('dateFromC').value, t = document.getElementById('dateToC').value;
+    if (f && t) applyRangeC(f, t, f.slice(8) + '/' + f.slice(5,7) + ' a ' + t.slice(8) + '/' + t.slice(5,7));
+  }}
+"""
 
     return f"""<!DOCTYPE html>
 <html lang="pt-BR">
