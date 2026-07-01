@@ -119,12 +119,26 @@ def fetch_meta(account):
             "i": int(float(d.get("impressions", 0))),
         })
 
+    # Busca campanhas com insights 30d
     camps = api_get(f"{acc_id}/campaigns",
                     {"fields": "id,name,status,objective,"
-                               "insights.date_preset(last_30d){spend,actions,action_values,impressions,clicks,reach,cpm,ctr,cpc},"
-                               "insights.date_preset(last_90d){spend,actions,action_values,impressions,clicks,reach,cpm,ctr,cpc}",
+                               "insights.date_preset(last_30d){spend,actions,action_values,impressions,clicks,reach,cpm,ctr,cpc}",
                      "filtering": '[{"field":"effective_status","operator":"IN","value":["ACTIVE","PAUSED"]}]',
                      "limit": 20}).get("data", [])
+
+    # Busca insights 90d separadamente e mescla
+    try:
+        camps_90 = api_get(f"{acc_id}/campaigns",
+                           {"fields": "id,"
+                                      "insights.date_preset(last_90d){spend,actions,action_values,impressions,clicks,reach,cpm,ctr,cpc}",
+                            "filtering": '[{"field":"effective_status","operator":"IN","value":["ACTIVE","PAUSED"]}]',
+                            "limit": 20}).get("data", [])
+        ins90_map = {camp90["id"]: camp90.get("insights") for camp90 in camps_90}
+        for camp in camps:
+            camp["insights_90d"] = ins90_map.get(camp["id"])
+    except Exception:
+        for camp in camps:
+            camp["insights_90d"] = None
 
     # Anúncios por campanha (30d e 90d)
     for camp in camps:
@@ -132,9 +146,9 @@ def fetch_meta(account):
             key = "_ads" if preset == "last_30d" else "_ads_90d"
             try:
                 camp[key] = api_get(f"{camp['id']}/ads",
-                                    {"fields": f"id,name,status,"
+                                    {"fields": "id,name,status,"
                                                f"insights.date_preset({preset}){{spend,actions,ctr,cpc}},"
-                                               f"preview_shareable_link",
+                                               "preview_shareable_link",
                                      "filtering": '[{"field":"effective_status","operator":"IN","value":["ACTIVE","PAUSED"]}]',
                                      "limit": 10}).get("data", [])
             except Exception:
@@ -162,7 +176,10 @@ def google_client(login_customer_id):
 
 def fetch_google(account):
     cid   = account["google_customer_id"]
-    login = account.get("google_login_customer_id", MCC_ID)
+    if account.get("google_standalone"):
+        login = cid
+    else:
+        login = account.get("google_login_customer_id", MCC_ID)
     client = google_client(login)
     ga = client.get_service("GoogleAdsService")
 
@@ -190,16 +207,22 @@ def fetch_google(account):
         "cost_per_conv": (spend / conv) if conv else 0,
     }
 
-    # Diário
-    daily = []
-    q_day = """
-        SELECT segments.date, metrics.cost_micros, metrics.conversions
-        FROM customer WHERE segments.date DURING LAST_30_DAYS
+    # Diário — 180 dias
+    goog_today = datetime.date.today()
+    s180 = (goog_today - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
+    tnow = goog_today.strftime("%Y-%m-%d")
+    goog_daily_compact = []
+    q_day = f"""
+        SELECT segments.date, metrics.cost_micros, metrics.conversions,
+               metrics.clicks, metrics.impressions
+        FROM customer WHERE segments.date BETWEEN '{s180}' AND '{tnow}'
         ORDER BY segments.date"""
     for row in ga.search(customer_id=cid, query=q_day):
-        daily.append({"date": row.segments.date,
-                      "spend": row.metrics.cost_micros / 1e6,
-                      "conversions": row.metrics.conversions})
+        goog_daily_compact.append({"d": row.segments.date,
+                                   "s": round(row.metrics.cost_micros / 1e6, 2),
+                                   "cv": round(row.metrics.conversions, 2),
+                                   "c": int(row.metrics.clicks),
+                                   "i": int(row.metrics.impressions)})
 
     # Campanhas
     camps = []
@@ -225,9 +248,7 @@ def fetch_google(account):
             "cost_per_conv": (c_spend / row.metrics.conversions) if row.metrics.conversions else 0,
         })
 
-    return {"metrics": metrics, "campaigns": camps, "daily_compact": daily_compact}
-
-
+    return {"metrics": metrics, "campaigns": camps, "daily_compact": goog_daily_compact}
 # ════════════════════════════════════════════════════════════════════
 # FORMATAÇÃO
 # ════════════════════════════════════════════════════════════════════
