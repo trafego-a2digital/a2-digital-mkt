@@ -1243,7 +1243,7 @@ def render(account, meta, g):
     if (Math.abs(pct) < 0.5) { el.textContent = 'estável vs período anterior'; el.className = 'kcard-delta neutral'; return; }
     const good = invert ? pct < 0 : pct > 0;
     const arrow = pct > 0 ? '↑' : '↓';
-    const goodWord = good ? (invert ? 'melhorou' : 'cresceu') : (invert ? 'piorou' : 'caiu');
+    const goodWord = good ? 'melhorou' : 'piorou';
     el.textContent = arrow + ' ' + Math.abs(pct).toFixed(0) + '% vs anterior — ' + goodWord;
     el.className = 'kcard-delta ' + (good ? 'up' : 'down');
   }
