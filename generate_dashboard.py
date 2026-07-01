@@ -761,16 +761,15 @@ def page_meta_overview(account, meta, page_id, title):
 
 def page_google_overview(g, page_id, title):
     m = g["metrics"]
-    gp = g.get("prev", {})
-    cards = kcard_cmp("Investimento", fmt_brl(m["spend"]), m["spend"], gp.get("spend"), "gold")
-    cards += kcard_cmp("Conversões", str(m["conversions"]).replace(".", ","), m["conversions"], gp.get("conversions"))
-    cards += kcard_cmp("Custo/Conversão", fmt_brl(m["cost_per_conv"]), m["cost_per_conv"], gp.get("cost_per_conv"),
-                       "green" if m["cost_per_conv"] < 50 else "", invert=True)
-    cards += kcard_cmp("Cliques", fmt_num(m["clicks"]), m["clicks"], gp.get("clicks"))
-    cards += kcard_cmp("CTR", fmt_pct(m["ctr"]), m["ctr"], gp.get("ctr"), "green" if m["ctr"] > 3 else "")
+    cards = kcard("Investimento", fmt_brl(m["spend"]), "", "gold", vid="gSpend")
+    cards += kcard("Conversões", str(m["conversions"]).replace(".", ","), "", vid="gConv")
+    cards += kcard("Custo/Conversão", fmt_brl(m["cost_per_conv"]), "",
+                   "green" if m["cost_per_conv"] < 50 else "", vid="gCostConv")
+    cards += kcard("Cliques", fmt_num(m["clicks"]), "", vid="gClicks")
+    cards += kcard("CTR", fmt_pct(m["ctr"]), "", "green" if m["ctr"] > 3 else "", vid="gCtr")
 
-    cards2 = kcard("Impressões", fmt_num(m["impressions"]), "exibições")
-    cards2 += kcard("CPC Médio", fmt_brl(m["cpc"]), "custo por clique")
+    cards2 = kcard("Impressões", fmt_num(m["impressions"]), "", vid="gImp")
+    cards2 += kcard("CPC Médio", fmt_brl(m["cpc"]), "", vid="gCpc")
     if m["conv_value"] > 0:
         cards2 += kcard("Valor de Conversão", fmt_brl(m["conv_value"]), "receita atribuída", "green")
         cards2 += kcard("ROAS", fmt_x(sdiv(m["conv_value"], m["spend"])), "retorno", "green")
