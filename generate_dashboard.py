@@ -654,8 +654,10 @@ def build_google_funnel(g):
 def page_meta_overview(account, meta, page_id, title):
     m = meta["metrics"]
     result_label = account.get("result_label", "Resultados")
+    result_event = account.get("result_event", "lead")
     cpl = sdiv(m["spend"], m["results"])
     has_roas = account.get("has_roas", False)
+    is_msgs = result_event == MSG_EVENT
 
     cards1 = kcard("Investimento", fmt_brl(m["spend"]), "", "gold", vid="mSpend")
     cards1 += kcard(result_label, fmt_num(m["results"]), "", vid="mResults")
@@ -665,9 +667,14 @@ def page_meta_overview(account, meta, page_id, title):
         roas = sdiv(m["revenue"], m["spend"])
         cards1 += kcard("Receita", fmt_brl(m["revenue"]), "", "green", vid="mRev")
         cards1 += kcard("ROAS", fmt_x(roas), "", "green" if roas >= 2 else "red", vid="mRoas")
-    else:
+    elif not is_msgs:
+        # Só mostra msgs se não for conta de mensagens (evita duplicata)
         cards1 += kcard("Msgs Iniciadas", fmt_num(m["msgs"]), "", vid="mMsgs")
         cards1 += kcard("Custo/Mensagem", fmt_brl(sdiv(m["spend"], m["msgs"])), "", vid="mCostMsg")
+    else:
+        # Conta de mensagens: mostrar leads (se houver) e custo/msg como complemento
+        cards1 += kcard("Cliques no Link", fmt_num(m["clicks"]), "", vid="mClicks")
+        cards1 += kcard("CTR", fmt_pct(m["ctr"]), "", "green" if m["ctr"] > 1.5 else "", vid="mCtr")
 
     freq = sdiv(m["impressions"], m["reach"])
     cards2 = kcard("Alcance", fmt_num(m["reach"]), "últimos 30d (fixo)")
@@ -1235,7 +1242,9 @@ def render(account, meta, g):
     const pct = (cur - prev) / prev * 100;
     if (Math.abs(pct) < 0.5) { el.textContent = 'estável vs período anterior'; el.className = 'kcard-delta neutral'; return; }
     const good = invert ? pct < 0 : pct > 0;
-    el.textContent = (pct > 0 ? '↑ ' : '↓ ') + Math.abs(pct).toFixed(0) + '% vs período anterior';
+    const arrow = pct > 0 ? '↑' : '↓';
+    const goodWord = good ? (invert ? 'melhorou' : 'cresceu') : (invert ? 'piorou' : 'caiu');
+    el.textContent = arrow + ' ' + Math.abs(pct).toFixed(0) + '% vs anterior — ' + goodWord;
     el.className = 'kcard-delta ' + (good ? 'up' : 'down');
   }
 
