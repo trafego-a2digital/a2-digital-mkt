@@ -1,21 +1,18 @@
 """
 dados_relatorio_semanal.py — Automação 3 (versão com relatório completo)
-
-*** VERSÃO TEMPORÁRIA — DATAS FIXAS 06/07/2026 A 09/07/2026 ***
-Rodar manualmente hoje e depois reverter para periodo_ultimos_7_dias().
-
 Toda sexta-feira, para cada conta:
-  1. Puxa dados do período informado: campanhas + top 3 criativos
+  1. Puxa dados dos últimos 7 dias completos antes da execução
   2. Busca link de prévia compartilhável de cada criativo (Graph API)
   3. Gera o HTML no layout oficial do Relatório A2, com a logo da pasta
      assets/ embutida em base64
   4. Envia ao Telegram: resumo executivo + arquivo .html pronto
      (abrir no Chrome → Salvar como PDF com "Gráficos de fundo" ativado)
+Execução sugerida: sexta-feira, 08h00 Brasília.
 """
 
 import json
 import os
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from comum import (carregar_config, metricas_periodo, insights_conta,
                    extrair_resultados, detalhes_anuncio, hoje_br,
                    enviar_telegram, enviar_documento_telegram, fmt_brl)
@@ -28,21 +25,11 @@ FIELDS_AD = ["ad_id", "ad_name", "campaign_id", "campaign_name",
 def periodo_ultimos_7_dias():
     """Retorna (inicio, fim) cobrindo os últimos 7 dias completos
     antes da data de execução. Funciona independente do dia da semana
-    em que o workflow rodar.
-
-    *** NÃO USADA NESTA EXECUÇÃO — ver periodo_fixo_temporario() ***
-    """
+    em que o workflow rodar."""
     hoje = hoje_br()
     fim = hoje - timedelta(days=1)
     inicio = fim - timedelta(days=6)
     return inicio, fim
-
-
-def periodo_fixo_temporario():
-    """*** TEMPORÁRIO *** Datas fixas para a execução manual de hoje:
-    06/07/2026 a 09/07/2026. Remover após rodar e voltar a usar
-    periodo_ultimos_7_dias()."""
-    return date(2026, 7, 6), date(2026, 7, 9)
 
 
 def top_criativos(account_id, since, until, gasto_min, top_n=3):
@@ -134,12 +121,7 @@ def processar_conta(conta, limites, since, until, pasta_saida, logo_b64):
 
 def main():
     cfg = carregar_config()
-
-    # *** TEMPORÁRIO: usando período fixo 06/07 a 09/07 para esta execução ***
-    # Depois de rodar, trocar de volta para:
-    # since, until = periodo_ultimos_7_dias()
-    since, until = periodo_fixo_temporario()
-
+    since, until = periodo_ultimos_7_dias()
     pasta = os.environ.get("PASTA_SAIDA", "/tmp/relatorios")
     os.makedirs(pasta, exist_ok=True)
 
