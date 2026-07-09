@@ -1,11 +1,13 @@
 # metas_pacing.py
-# Módulo de pacing contra meta mensal de faturamento por conta.
-# Uso no roas_report.py:
+# Módulo de pacing contra meta mensal de faturamento por conta — versão semanal.
+# Substitui o bloco antigo do relatório diário (bloco_meta) por bloco_meta_semanal,
+# pensado para rodar segunda, quarta e sexta.
 #
-#   from metas_pacing import bloco_meta
+# Uso no roas_report.py (ou no script do relatório semanal):
+#
+#   from metas_pacing import bloco_meta_semanal
 #   ...
-#   # onde monta a mensagem de cada conta, depois do acumulado do mês:
-#   msg += bloco_meta(account_id, receita_acumulada_mes)
+#   msg += bloco_meta_semanal(account_id, receita_acumulada_mes)
 #
 # receita_acumulada_mes = faturamento (purchase value) acumulado do dia 1 até ontem.
 
@@ -31,10 +33,15 @@ def _fmt(valor: float) -> str:
     return "R$ " + f"{valor:,.0f}".replace(",", ".")
 
 
-def bloco_meta(account_id: str, receita_acumulada_mes: float, hoje: date | None = None) -> str:
-    """Retorna as linhas de pacing vs meta para anexar à mensagem da conta.
+def bloco_meta_semanal(account_id: str, receita_acumulada_mes: float, hoje: date | None = None) -> str:
+    """Retorna o bloco de pacing vs meta para o relatório semanal (seg/qua/sex).
 
-    Considera que a receita acumulada vai até ontem (D-1), padrão do relatório.
+    Além do que o relatório diário já mostrava (meta, realizado, projeção, falta),
+    inclui:
+    - em quantos dias a meta é batida se o ritmo atual (média diária real) se mantiver
+    - se está fora do ritmo, quanto precisa aumentar a média diária e uma recomendação
+
+    Considera que a receita acumulada vai até ontem (D-1).
     Retorna string vazia se a conta não tem meta no mês corrente.
     """
     hoje = hoje or date.today()
@@ -46,7 +53,6 @@ def bloco_meta(account_id: str, receita_acumulada_mes: float, hoje: date | None 
     ontem = hoje - timedelta(days=1)
     dias_no_mes = calendar.monthrange(hoje.year, hoje.month)[1]
 
-    # Se o relatório roda dia 1, ontem pertence ao mês anterior: mês zerado.
     if ontem.month != hoje.month:
         dias_decorridos = 0
         dias_restantes = dias_no_mes
@@ -54,15 +60,13 @@ def bloco_meta(account_id: str, receita_acumulada_mes: float, hoje: date | None 
         dias_decorridos = ontem.day
         dias_restantes = dias_no_mes - dias_decorridos
 
-    if dias_decorridos > 0:
-        projecao = receita_acumulada_mes / dias_decorridos * dias_no_mes
-    else:
-        projecao = 0.0
-
-    pct_meta = receita_acumulada_mes / meta * 100
+    media_diaria = receita_acumulada_mes / dias_decorridos if dias_decorridos > 0 else 0.0
+    projecao = media_diaria * dias_no_mes
     falta = max(meta - receita_acumulada_mes, 0)
     necessario_dia = falta / dias_restantes if dias_restantes > 0 else falta
+    pct_meta = receita_acumulada_mes / meta * 100
 
+    # Status
     if receita_acumulada_mes >= meta:
         status = "✅"
     elif projecao >= meta:
@@ -76,8 +80,35 @@ def bloco_meta(account_id: str, receita_acumulada_mes: float, hoje: date | None 
         "",
         f"{status} Meta do mês: {_fmt(meta)}",
         f"• Realizado: {_fmt(receita_acumulada_mes)} ({pct_meta:.0f}%)",
-        f"• Projeção: {_fmt(projecao)}",
+        f"• Projeção no ritmo atual: {_fmt(projecao)}",
     ]
-    if receita_acumulada_mes < meta:
-        linhas.append(f"• Falta: {_fmt(falta)} ({_fmt(necessario_dia)}/dia em {dias_restantes} dias)")
+
+    if receita_acumulada_mes >= meta:
+        linhas.append(f"• Meta batida com {dias_restantes} dia(s) de sobra no mês")
+        return "\n".join(linhas)
+
+    # Em quantos dias bate a meta no ritmo atual (média diária real desde o dia 1)
+    if media_diaria > 0:
+        dias_para_bater = meta / media_diaria
+        if dias_para_bater <= dias_no_mes:
+            dia_previsto = dias_para_bater - dias_decorridos
+            linhas.append(f"• No ritmo atual, bate a meta em ~{dia_previsto:.0f} dia(s)")
+        else:
+            linhas.append("• No ritmo atual, NÃO bate a meta dentro do mês")
+    else:
+        linhas.append("• Sem vendas registradas no mês até agora")
+
+    linhas.append(f"• Falta: {_fmt(falta)} ({_fmt(necessario_dia)}/dia em {dias_restantes} dias restantes)")
+
+    # Recomendação de ação quando o ritmo atual não é suficiente
+    if necessario_dia > media_diaria:
+        if media_diaria > 0:
+            aumento_pct = (necessario_dia / media_diaria - 1) * 100
+            linhas.append(
+                f"⚠️ Ação: aumente a média diária em ~{aumento_pct:.0f}% "
+                f"(via orçamento e/ou ROAS) para bater a meta no prazo"
+            )
+        else:
+            linhas.append("⚠️ Ação: conta zerada no mês, revisar campanhas ativas com urgência")
+
     return "\n".join(linhas)
