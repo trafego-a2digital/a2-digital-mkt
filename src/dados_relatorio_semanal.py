@@ -1,13 +1,13 @@
 """
 dados_relatorio_semanal.py — Automação 3 (versão com relatório completo)
-Toda segunda-feira, para cada conta:
-  1. Puxa dados da semana anterior (seg-dom): campanhas + top 3 criativos
+Toda sexta-feira, para cada conta:
+  1. Puxa dados dos últimos 7 dias completos antes da execução
   2. Busca link de prévia compartilhável de cada criativo (Graph API)
   3. Gera o HTML no layout oficial do Relatório A2, com a logo da pasta
      assets/ embutida em base64
   4. Envia ao Telegram: resumo executivo + arquivo .html pronto
      (abrir no Chrome → Salvar como PDF com "Gráficos de fundo" ativado)
-Execução sugerida: segunda-feira, 08h00 Brasília.
+Execução sugerida: sexta-feira, 08h00 Brasília.
 """
 
 import json
@@ -22,11 +22,14 @@ FIELDS_AD = ["ad_id", "ad_name", "campaign_id", "campaign_name",
              "spend", "impressions", "clicks", "ctr", "actions"]
 
 
-def semana_passada():
-    """Retorna (segunda, domingo) da semana anterior."""
+def periodo_ultimos_7_dias():
+    """Retorna (inicio, fim) cobrindo os últimos 7 dias completos
+    antes da data de execução. Funciona independente do dia da semana
+    em que o workflow rodar."""
     hoje = hoje_br()
-    ultima_segunda = hoje - timedelta(days=hoje.weekday() + 7)
-    return ultima_segunda, ultima_segunda + timedelta(days=6)
+    fim = hoje - timedelta(days=1)
+    inicio = fim - timedelta(days=6)
+    return inicio, fim
 
 
 def top_criativos(account_id, since, until, gasto_min, top_n=3):
@@ -118,7 +121,7 @@ def processar_conta(conta, limites, since, until, pasta_saida, logo_b64):
 
 def main():
     cfg = carregar_config()
-    since, until = semana_passada()
+    since, until = periodo_ultimos_7_dias()
     pasta = os.environ.get("PASTA_SAIDA", "/tmp/relatorios")
     os.makedirs(pasta, exist_ok=True)
 
@@ -137,7 +140,7 @@ def main():
             htmls.append((html, conta["nome"]))
 
     cab = (f"📅 <b>RELATÓRIOS SEMANAIS — META ADS</b>\n"
-           f"<i>Semana de {since.strftime('%d/%m')} a {until.strftime('%d/%m')}</i>\n"
+           f"<i>Período: {since.strftime('%d/%m')} a {until.strftime('%d/%m')}</i>\n"
            f"<i>HTMLs em anexo — abrir no Chrome e Salvar como PDF "
            f"com \"Gráficos de fundo\" ativado.</i>\n")
     enviar_telegram(cab + "\n".join(blocos))
