@@ -1,13 +1,15 @@
 """
 dados_relatorio_semanal.py — Automação 3 (versão com relatório completo)
-Toda sexta-feira, para cada conta:
+Duas execuções por semana, cada uma com seu próprio grupo de contas:
+  - Segunda-feira, 08h00 Brasília: Clay e Tiago, enviados ao chat/grupo padrão
+  - Quarta-feira,  08h00 Brasília: Flavius, enviado ao chat pessoal do Wesley
+Para cada conta processada no dia:
   1. Puxa dados dos últimos 7 dias completos antes da execução
   2. Busca link de prévia compartilhável de cada criativo (Graph API)
   3. Gera o HTML no layout oficial do Relatório A2, com a logo da pasta
      assets/ embutida em base64
   4. Envia ao Telegram: resumo executivo + arquivo .html pronto
      (abrir no Chrome → Salvar como PDF com "Gráficos de fundo" ativado)
-Execução sugerida: sexta-feira, 08h00 Brasília.
 """
 
 import json
@@ -119,18 +121,43 @@ def processar_conta(conta, limites, since, until, pasta_saida, logo_b64):
     return caminho_html, caminho_json, "\n".join(linhas)
 
 
+# Slugs (última palavra do nome, em minúsculo) que rodam em cada dia.
+# Segunda: Clay e Tiago, no chat/grupo padrão.
+# Quarta:  só o Flavius, mandado direto pro chat do Wesley.
+CONTAS_SEGUNDA = {"clay", "tiago"}
+CONTAS_QUARTA = {"flavius"}
+
+
+def dia_de_execucao():
+    """Descobre qual gatilho disparou o workflow.
+    Prioriza o cron exato (github.event.schedule); se rodar via
+    workflow_dispatch (manual) ou fora do Actions, cai pro dia da
+    semana real em Brasília."""
+    evento = os.environ.get("GITHUB_EVENT_SCHEDULE", "").strip()
+    if evento == "0 11 * * 3":
+        return "quarta"
+    if evento == "0 11 * * 1":
+        return "segunda"
+    return "quarta" if hoje_br().weekday() == 2 else "segunda"
+
+
 def main():
     cfg = carregar_config()
     since, until = periodo_ultimos_7_dias()
     pasta = os.environ.get("PASTA_SAIDA", "/tmp/relatorios")
     os.makedirs(pasta, exist_ok=True)
 
+    dia = dia_de_execucao()
+    slugs_do_dia = CONTAS_QUARTA if dia == "quarta" else CONTAS_SEGUNDA
+    contas_do_dia = [c for c in cfg["contas"]
+                     if c["nome"].lower().split()[-1] in slugs_do_dia]
+
     logo_b64 = carregar_logo_b64(cfg.get("logo_path", "assets/logo.png"))
     if not logo_b64:
         print("[AVISO] Logo não encontrada em assets/ — relatório sai com texto no lugar.")
 
     blocos, htmls = [], []
-    for conta in cfg["contas"]:
+    for conta in contas_do_dia:
         if not conta.get("ativo", True):
             continue
         html, _json, resumo = processar_conta(conta, cfg["limites"],
@@ -143,6 +170,13 @@ def main():
            f"<i>Período: {since.strftime('%d/%m')} a {until.strftime('%d/%m')}</i>\n"
            f"<i>HTMLs em anexo — abrir no Chrome e Salvar como PDF "
            f"com \"Gráficos de fundo\" ativado.</i>\n")
+
+    # Na quarta o envio vai pro chat pessoal do Wesley (TELEGRAM_CHAT_ID_WESLEY),
+    # se essa variável estiver configurada; senão cai no chat padrão.
+    if dia == "quarta":
+        chat_flavius = os.environ.get("TELEGRAM_CHAT_ID_WESLEY") or os.environ.get("TELEGRAM_CHAT_ID")
+        os.environ["TELEGRAM_CHAT_ID"] = chat_flavius
+
     enviar_telegram(cab + "\n".join(blocos))
 
     for caminho, nome in htmls:
