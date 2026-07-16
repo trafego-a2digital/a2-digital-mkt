@@ -122,8 +122,9 @@ def processar_conta(conta, limites, since, until, pasta_saida, logo_b64):
 
 
 # Slugs (última palavra do nome, em minúsculo) que rodam em cada dia.
-# Segunda: Clay e Tiago, no chat/grupo padrão.
-# Quarta:  só o Flavius, mandado direto pro chat do Wesley.
+# Segunda: Clay e Tiago. Quarta: só o Flavius.
+# Todos os três (Clay, Tiago, Flavius) vão para o mesmo grupo do Telegram
+# (TELEGRAM_CHAT_ID = grupo "Relatorios semanais Clay - A2 Digital Mkt").
 CONTAS_SEGUNDA = {"clay", "tiago"}
 CONTAS_QUARTA = {"flavius"}
 
@@ -170,12 +171,6 @@ def main():
            f"<i>Período: {since.strftime('%d/%m')} a {until.strftime('%d/%m')}</i>\n"
            f"<i>HTMLs em anexo — abrir no Chrome e Salvar como PDF "
            f"com \"Gráficos de fundo\" ativado.</i>\n")
-
-    # Na quarta o envio vai pro chat pessoal do Wesley (TELEGRAM_CHAT_ID_WESLEY),
-    # se essa variável estiver configurada; senão cai no chat padrão.
-    if dia == "quarta":
-        chat_flavius = os.environ.get("TELEGRAM_CHAT_ID_WESLEY") or os.environ.get("TELEGRAM_CHAT_ID")
-        os.environ["TELEGRAM_CHAT_ID"] = chat_flavius
 
     enviar_telegram(cab + "\n".join(blocos))
 
