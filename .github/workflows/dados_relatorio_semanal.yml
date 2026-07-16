@@ -19,8 +19,7 @@ jobs:
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_CHAT_ID_WESLEY: ${{ secrets.TELEGRAM_CHAT_ID_WESLEY }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID_GRUPO }}
           GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
           PASTA_SAIDA: /tmp/relatorios
         run: python src/dados_relatorio_semanal.py
