@@ -1,8 +1,9 @@
-name: Dados Relatório Semanal (segunda)
+name: Dados Relatório Semanal (segunda e quarta)
 
 on:
   schedule:
-    - cron: '0 11 * * 1'   # 08h00 Brasília, segunda-feira
+    - cron: '0 11 * * 1'   # 08h00 Brasília, segunda-feira → Clay e Tiago
+    - cron: '0 11 * * 3'   # 08h00 Brasília, quarta-feira  → Flavius
   workflow_dispatch:
 
 jobs:
@@ -19,6 +20,8 @@ jobs:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID_WESLEY: ${{ secrets.TELEGRAM_CHAT_ID_WESLEY }}
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
           PASTA_SAIDA: /tmp/relatorios
         run: python src/dados_relatorio_semanal.py
       - name: Guardar JSONs como artifact (backup 30 dias)
