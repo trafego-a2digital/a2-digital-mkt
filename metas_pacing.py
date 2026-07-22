@@ -1,15 +1,13 @@
 # metas_pacing.py
 # Módulo de pacing contra meta mensal de faturamento por conta — versão semanal.
-# Substitui o bloco antigo do relatório diário (bloco_meta) por bloco_meta_semanal,
-# pensado para rodar segunda, quarta e sexta.
+# A bonificação exige DUAS coisas ao mesmo tempo: bater a meta de faturamento
+# E manter ROAS >= 5 no mês. Por isso o status (bolinha) considera as duas.
 #
-# Uso no roas_report.py (ou no script do relatório semanal):
+# Uso no relatorio_semanal_metas.py:
 #
 #   from metas_pacing import bloco_meta_semanal
 #   ...
-#   msg += bloco_meta_semanal(account_id, receita_acumulada_mes)
-#
-# receita_acumulada_mes = faturamento (purchase value) acumulado do dia 1 até ontem.
+#   msg += bloco_meta_semanal(account_id, receita_acumulada_mes, roas_mes)
 
 from datetime import date, timedelta
 import calendar
@@ -27,19 +25,32 @@ METAS = {
     "892752402026712":  {8: 10000, 9: 10000, 10: 10000, 11: 10000, 12: 10000},             # CONFIDEFE 11
 }
 
+ROAS_MINIMO = 5.0
+
 
 def _fmt(valor: float) -> str:
     """Formata em R$ no padrão brasileiro, sem centavos."""
     return "R$ " + f"{valor:,.0f}".replace(",", ".")
 
 
-def bloco_meta_semanal(account_id: str, receita_acumulada_mes: float, hoje: date | None = None) -> str:
+def bloco_meta_semanal(
+    account_id: str,
+    receita_acumulada_mes: float,
+    roas_mes: float,
+    hoje: date | None = None,
+) -> str:
     """Retorna o bloco de pacing vs meta para o relatório semanal (seg/qua/sex).
 
-    Além do que o relatório diário já mostrava (meta, realizado, projeção, falta),
-    inclui:
-    - em quantos dias a meta é batida se o ritmo atual (média diária real) se mantiver
-    - se está fora do ritmo, quanto precisa aumentar a média diária e uma recomendação
+    Mostra meta, realizado, projeção, ROAS do mês, em quantos dias a meta é
+    batida no ritmo atual, e recomendação quando estiver fora do ritmo.
+
+    O status (bolinha) considera meta de faturamento E ROAS >= 5 ao mesmo
+    tempo, porque a bonificação só vale se as duas condições forem atendidas:
+
+    ✅  meta já batida E ROAS >= 5 (bonificação garantida se mantiver o ritmo)
+    🟢  projeção bate a meta E ROAS >= 5 (no caminho certo nas duas frentes)
+    🟡  só uma das duas está encaminhada (meta OU ROAS, não as duas)
+    🔴  nem a meta nem o ROAS estão encaminhados
 
     Considera que a receita acumulada vai até ontem (D-1).
     Retorna string vazia se a conta não tem meta no mês corrente.
@@ -66,12 +77,16 @@ def bloco_meta_semanal(account_id: str, receita_acumulada_mes: float, hoje: date
     necessario_dia = falta / dias_restantes if dias_restantes > 0 else falta
     pct_meta = receita_acumulada_mes / meta * 100
 
-    # Status
-    if receita_acumulada_mes >= meta:
+    meta_batida = receita_acumulada_mes >= meta
+    meta_no_caminho = projecao >= meta
+    roas_ok = roas_mes >= ROAS_MINIMO
+
+    # Status combinando meta de faturamento e ROAS
+    if meta_batida and roas_ok:
         status = "✅"
-    elif projecao >= meta:
+    elif meta_no_caminho and roas_ok:
         status = "🟢"
-    elif projecao >= meta * 0.8:
+    elif meta_no_caminho or roas_ok:
         status = "🟡"
     else:
         status = "🔴"
@@ -81,34 +96,38 @@ def bloco_meta_semanal(account_id: str, receita_acumulada_mes: float, hoje: date
         f"{status} Meta do mês: {_fmt(meta)}",
         f"• Realizado: {_fmt(receita_acumulada_mes)} ({pct_meta:.0f}%)",
         f"• Projeção no ritmo atual: {_fmt(projecao)}",
+        f"• ROAS do mês: {roas_mes:.2f}" + ("" if roas_ok else f" (abaixo do mínimo de {ROAS_MINIMO:.0f})"),
     ]
 
-    if receita_acumulada_mes >= meta:
-        linhas.append(f"• Meta batida com {dias_restantes} dia(s) de sobra no mês")
-        return "\n".join(linhas)
-
-    # Em quantos dias bate a meta no ritmo atual (média diária real desde o dia 1)
-    if media_diaria > 0:
-        dias_para_bater = meta / media_diaria
-        if dias_para_bater <= dias_no_mes:
-            dia_previsto = dias_para_bater - dias_decorridos
-            linhas.append(f"• No ritmo atual, bate a meta em ~{dia_previsto:.0f} dia(s)")
-        else:
-            linhas.append("• No ritmo atual, NÃO bate a meta dentro do mês")
+    if meta_batida:
+        linhas.append(f"• Meta de faturamento batida com {dias_restantes} dia(s) de sobra no mês")
     else:
-        linhas.append("• Sem vendas registradas no mês até agora")
-
-    linhas.append(f"• Falta: {_fmt(falta)} ({_fmt(necessario_dia)}/dia em {dias_restantes} dias restantes)")
-
-    # Recomendação de ação quando o ritmo atual não é suficiente
-    if necessario_dia > media_diaria:
+        # Em quantos dias bate a meta no ritmo atual (média diária real desde o dia 1)
         if media_diaria > 0:
-            aumento_pct = (necessario_dia / media_diaria - 1) * 100
-            linhas.append(
-                f"⚠️ Ação: aumente a média diária em ~{aumento_pct:.0f}% "
-                f"(via orçamento e/ou ROAS) para bater a meta no prazo"
-            )
+            dias_para_bater = meta / media_diaria
+            if dias_para_bater <= dias_no_mes:
+                dia_previsto = dias_para_bater - dias_decorridos
+                linhas.append(f"• No ritmo atual, bate a meta em ~{dia_previsto:.0f} dia(s)")
+            else:
+                linhas.append("• No ritmo atual, NÃO bate a meta dentro do mês")
         else:
-            linhas.append("⚠️ Ação: conta zerada no mês, revisar campanhas ativas com urgência")
+            linhas.append("• Sem vendas registradas no mês até agora")
+
+        linhas.append(f"• Falta: {_fmt(falta)} ({_fmt(necessario_dia)}/dia em {dias_restantes} dias restantes)")
+
+        if necessario_dia > media_diaria:
+            if media_diaria > 0:
+                aumento_pct = (necessario_dia / media_diaria - 1) * 100
+                linhas.append(
+                    f"⚠️ Ação: aumente a média diária em ~{aumento_pct:.0f}% "
+                    f"(via orçamento e/ou ROAS) para bater a meta no prazo"
+                )
+            else:
+                linhas.append("⚠️ Ação: conta zerada no mês, revisar campanhas ativas com urgência")
+
+    # Alerta específico de ROAS, mesmo quando a meta de faturamento está ok:
+    # sem ROAS >= 5 a bonificação não vale, independente do faturamento batido.
+    if not roas_ok:
+        linhas.append(f"⚠️ ROAS abaixo de {ROAS_MINIMO:.0f} — sem isso não há bonificação, mesmo com meta batida")
 
     return "\n".join(linhas)
