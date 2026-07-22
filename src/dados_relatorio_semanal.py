@@ -89,8 +89,8 @@ def html_para_pdf(caminho_html, caminho_pdf, browser):
     page.goto(f"file://{os.path.abspath(caminho_html)}")
     page.wait_for_timeout(500)
     page.pdf(path=caminho_pdf, format="A4", print_background=True,
-             margin={"top": "10mm", "bottom": "10mm",
-                     "left": "10mm", "right": "10mm"})
+             margin={"top": "0mm", "bottom": "0mm",
+                     "left": "0mm", "right": "0mm"})
     page.close()
     return caminho_pdf
 
