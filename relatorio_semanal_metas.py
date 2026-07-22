@@ -2,14 +2,16 @@
 relatorio_semanal_metas.py
 
 Relatório semanal (segunda, quarta e sexta) enviado ao Telegram, contendo
-apenas o pacing de meta mensal por conta (bloco_meta_semanal).
-Substitui integralmente o antigo roas_report.py / daily_report.yml, que não
-roda mais.
+o pacing de meta mensal por conta (bloco_meta_semanal), incluindo o ROAS
+do mês — a bonificação exige meta de faturamento batida E ROAS >= 5.
+
+Agora enviado para o grupo "Congressos - relatórios de metas", não mais
+no direct do Telegram.
 
 Variáveis de ambiente esperadas (GitHub Actions secrets):
 - META_ACCESS_TOKEN
 - TELEGRAM_BOT_TOKEN
-- TELEGRAM_CHAT_ID
+- TELEGRAM_CHAT_ID_GRUPO_CONGRESSOS
 """
 
 import os
@@ -20,7 +22,7 @@ from metas_pacing import METAS, bloco_meta_semanal
 
 META_ACCESS_TOKEN = os.environ["META_ACCESS_TOKEN"]
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID_GRUPO_CONGRESSOS"]
 
 GRAPH_URL = "https://graph.facebook.com/v20.0"
 
@@ -37,33 +39,42 @@ NOMES_CONTAS = {
 }
 
 
-def receita_acumulada_mes(account_id: str) -> float:
-    """Busca a receita (valor de compras) acumulada do dia 1 até ontem via Graph API."""
+def dados_acumulados_mes(account_id: str) -> tuple[float, float]:
+    """Busca receita (purchase value) e ROAS acumulados do dia 1 até ontem via Graph API.
+
+    Retorna (receita_acumulada, roas_mes). ROAS = receita / gasto no período.
+    """
     hoje = date.today()
     ontem = hoje - timedelta(days=1)
     primeiro_dia = hoje.replace(day=1)
 
     # Se hoje é dia 1, o mês ainda não teve nenhum dia fechado.
     if ontem.month != hoje.month:
-        return 0.0
+        return 0.0, 0.0
 
     params = {
         "access_token": META_ACCESS_TOKEN,
         "level": "account",
-        "fields": "action_values",
+        "fields": "action_values,spend",
         "time_range": f'{{"since":"{primeiro_dia.isoformat()}","until":"{ontem.isoformat()}"}}',
     }
     resp = requests.get(f"{GRAPH_URL}/act_{account_id}/insights", params=params, timeout=30)
     resp.raise_for_status()
     data = resp.json().get("data", [])
     if not data:
-        return 0.0
+        return 0.0, 0.0
 
+    receita = 0.0
     action_values = data[0].get("action_values", [])
     for item in action_values:
         if item.get("action_type") == "omni_purchase":
-            return float(item.get("value", 0))
-    return 0.0
+            receita = float(item.get("value", 0))
+            break
+
+    gasto = float(data[0].get("spend", 0))
+    roas = receita / gasto if gasto > 0 else 0.0
+
+    return receita, roas
 
 
 def enviar_telegram(texto: str) -> None:
@@ -81,8 +92,8 @@ def main() -> None:
         if hoje.month not in METAS[account_id]:
             continue
 
-        receita = receita_acumulada_mes(account_id)
-        bloco = bloco_meta_semanal(account_id, receita)
+        receita, roas = dados_acumulados_mes(account_id)
+        bloco = bloco_meta_semanal(account_id, receita, roas)
         if not bloco:
             continue
 
