@@ -8,13 +8,17 @@ Para cada conta processada no dia:
   2. Busca link de prévia compartilhável de cada criativo (Graph API)
   3. Gera o HTML no layout oficial do Relatório A2, com a logo da pasta
      assets/ embutida em base64
-  4. Envia ao Telegram: resumo executivo + arquivo .html pronto
-     (abrir no Chrome → Salvar como PDF com "Gráficos de fundo" ativado)
+  4. Converte o HTML em PDF (Playwright + Chromium headless, com
+     print_background ativado — equivalente ao "Gráficos de fundo"
+     que antes era marcado manualmente no Chrome)
+  5. Envia ao Telegram: resumo executivo + arquivo .pdf pronto, sem
+     nenhum passo manual
 """
 
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from playwright.sync_api import sync_playwright
 from comum import (carregar_config, metricas_periodo, insights_conta,
                    extrair_resultados, detalhes_anuncio, hoje_br,
                    enviar_telegram, enviar_documento_telegram, fmt_brl)
@@ -76,7 +80,22 @@ def top_criativos(account_id, since, until, gasto_min, top_n=3):
     return por_campanha, None
 
 
-def processar_conta(conta, limites, since, until, pasta_saida, logo_b64):
+def html_para_pdf(caminho_html, caminho_pdf, browser):
+    """Renderiza o HTML em headless Chromium e exporta como PDF,
+    com print_background=True (equivalente ao "Gráficos de fundo"
+    do Chrome). Se o layout tiver gráficos via JS, o wait_for_timeout
+    dá tempo do JS terminar de desenhar antes da exportação."""
+    page = browser.new_page()
+    page.goto(f"file://{os.path.abspath(caminho_html)}")
+    page.wait_for_timeout(500)
+    page.pdf(path=caminho_pdf, format="A4", print_background=True,
+             margin={"top": "10mm", "bottom": "10mm",
+                     "left": "10mm", "right": "10mm"})
+    page.close()
+    return caminho_pdf
+
+
+def processar_conta(conta, limites, since, until, pasta_saida, logo_b64, browser):
     campanhas, erro = metricas_periodo(conta["account_id"], since, until)
     if erro:
         return None, None, (f"❌ <b>{conta['nome']}</b>: erro na API — "
@@ -112,13 +131,16 @@ def processar_conta(conta, limites, since, until, pasta_saida, logo_b64):
     with open(caminho_html, "w", encoding="utf-8") as f:
         f.write(gerar_html(payload, logo_b64))
 
+    caminho_pdf = os.path.join(pasta_saida, f"relatorio_{slug}_semana{semana}.pdf")
+    html_para_pdf(caminho_html, caminho_pdf, browser)
+
     melhor = min((c for c in campanhas if c["cpr"]), key=lambda c: c["cpr"], default=None)
     linhas = [f"\n📊 <b>{conta['nome'].upper()}</b>",
               f"   Investido: {fmt_brl(total_gasto)} · Resultados: {total_res} · "
               f"CPR médio: {fmt_brl(cpr_medio)}"]
     if melhor:
         linhas.append(f"   ✅ Melhor CPR: {melhor['nome']} — {fmt_brl(melhor['cpr'])}")
-    return caminho_html, caminho_json, "\n".join(linhas)
+    return caminho_pdf, caminho_json, "\n".join(linhas)
 
 
 # Slugs que rodam em cada dia. Cada conta no contas.json tem seu próprio
@@ -164,24 +186,26 @@ def main():
     if not logo_b64:
         print("[AVISO] Logo não encontrada em assets/ — relatório sai com texto no lugar.")
 
-    blocos, htmls = [], []
-    for conta in contas_do_dia:
-        if not conta.get("ativo", True):
-            continue
-        html, _json, resumo = processar_conta(conta, cfg["limites"],
-                                              since, until, pasta, logo_b64)
-        blocos.append(resumo)
-        if html:
-            htmls.append((html, conta["nome"]))
+    blocos, pdfs = [], []
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        for conta in contas_do_dia:
+            if not conta.get("ativo", True):
+                continue
+            pdf, _json, resumo = processar_conta(conta, cfg["limites"], since,
+                                                  until, pasta, logo_b64, browser)
+            blocos.append(resumo)
+            if pdf:
+                pdfs.append((pdf, conta["nome"]))
+        browser.close()
 
     cab = (f"📅 <b>RELATÓRIOS SEMANAIS — META ADS</b>\n"
            f"<i>Período: {since.strftime('%d/%m')} a {until.strftime('%d/%m')}</i>\n"
-           f"<i>HTMLs em anexo — abrir no Chrome e Salvar como PDF "
-           f"com \"Gráficos de fundo\" ativado.</i>\n")
+           f"<i>PDFs em anexo, prontos pra leitura.</i>\n")
 
     enviar_telegram(cab + "\n".join(blocos))
 
-    for caminho, nome in htmls:
+    for caminho, nome in pdfs:
         enviar_documento_telegram(caminho, legenda=f"Relatório A2 — {nome}")
 
 
