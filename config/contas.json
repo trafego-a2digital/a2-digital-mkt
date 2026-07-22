@@ -2,16 +2,19 @@
   "contas": [
     {
       "nome": "Dr. Flávius Cabral",
+      "slug": "flavius",
       "account_id": "3576573649250348",
       "ativo": true
     },
     {
       "nome": "Stimma Clay",
+      "slug": "clay",
       "account_id": "208064071916203",
       "ativo": true
     },
     {
       "nome": "Dr. Tiago Alcântara",
+      "slug": "tiago",
       "account_id": "2130371487349249",
       "ativo": true
     }
