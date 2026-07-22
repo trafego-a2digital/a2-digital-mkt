@@ -101,7 +101,7 @@ def processar_conta(conta, limites, since, until, pasta_saida, logo_b64):
         ],
     }
 
-    slug = conta["nome"].lower().split()[-1]
+    slug = conta.get("slug", conta["nome"].lower().split()[-1])
     semana = since.strftime("%d%b").lower()
 
     caminho_json = os.path.join(pasta_saida, f"dados_{slug}_{since}.json")
@@ -121,7 +121,10 @@ def processar_conta(conta, limites, since, until, pasta_saida, logo_b64):
     return caminho_html, caminho_json, "\n".join(linhas)
 
 
-# Slugs (última palavra do nome, em minúsculo) que rodam em cada dia.
+# Slugs que rodam em cada dia. Cada conta no contas.json tem seu próprio
+# campo "slug" dedicado (ex.: "flavius", "clay", "tiago") — não depende
+# mais da última palavra do nome de exibição, que quebra com títulos
+# ("Dr.") ou sobrenomes (ex.: "Dr. Flávius Cabral" -> "cabral" != "flavius").
 # Segunda: Clay e Tiago. Quarta: só o Flavius.
 # Todos os três (Clay, Tiago, Flavius) vão para o mesmo grupo do Telegram
 # (TELEGRAM_CHAT_ID = grupo "Relatorios semanais Clay - A2 Digital Mkt").
@@ -151,7 +154,11 @@ def main():
     dia = dia_de_execucao()
     slugs_do_dia = CONTAS_QUARTA if dia == "quarta" else CONTAS_SEGUNDA
     contas_do_dia = [c for c in cfg["contas"]
-                     if c["nome"].lower().split()[-1] in slugs_do_dia]
+                     if c.get("slug", c["nome"].lower().split()[-1]) in slugs_do_dia]
+
+    if not contas_do_dia:
+        print(f"[AVISO] Nenhuma conta encontrada para o dia '{dia}'. "
+              f"Verifique os slugs em contas.json (esperado: {sorted(slugs_do_dia)}).")
 
     logo_b64 = carregar_logo_b64(cfg.get("logo_path", "assets/logo.png"))
     if not logo_b64:
