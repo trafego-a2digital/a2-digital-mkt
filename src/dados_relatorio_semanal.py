@@ -17,7 +17,7 @@ Para cada conta processada no dia:
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from playwright.sync_api import sync_playwright
 from comum import (carregar_config, metricas_periodo, insights_conta,
                    extrair_resultados, detalhes_anuncio, hoje_br,
@@ -153,6 +153,19 @@ def processar_conta(conta, limites, since, until, pasta_saida, logo_b64, browser
 CONTAS_SEGUNDA = {"clay", "tiago"}
 CONTAS_QUARTA = {"flavius"}
 
+# --- AJUSTE TEMPORÁRIO (julho/2026), só pro Flavius --------------------
+# Períodos de cobertura fechados manualmente pra esse mês. A chave é a
+# data (Brasília) da execução; fora dessas datas o cálculo volta sozinho
+# pro padrão de "últimos 7 dias" (periodo_ultimos_7_dias). Pode apagar
+# este bloco e a checagem em main() depois de 31/07/2026 — não precisa
+# fazer nada além disso pra voltar ao normal.
+PERIODOS_ESPECIAIS_FLAVIUS = {
+    "2026-07-15": (date(2026, 7, 10), date(2026, 7, 15)),
+    "2026-07-22": (date(2026, 7, 16), date(2026, 7, 22)),
+    "2026-07-29": (date(2026, 7, 23), date(2026, 7, 29)),
+    "2026-07-31": (date(2026, 7, 30), date(2026, 7, 31)),
+}
+
 
 def dia_de_execucao():
     """Descobre qual gatilho disparou o workflow.
@@ -160,7 +173,7 @@ def dia_de_execucao():
     workflow_dispatch (manual) ou fora do Actions, cai pro dia da
     semana real em Brasília."""
     evento = os.environ.get("GITHUB_EVENT_SCHEDULE", "").strip()
-    if evento == "0 11 * * 3":
+    if evento in ("0 11 * * 3", "0 11 31 7 *"):
         return "quarta"
     if evento == "0 11 * * 1":
         return "segunda"
@@ -177,6 +190,14 @@ def main():
     slugs_do_dia = CONTAS_QUARTA if dia == "quarta" else CONTAS_SEGUNDA
     contas_do_dia = [c for c in cfg["contas"]
                      if c.get("slug", c["nome"].lower().split()[-1]) in slugs_do_dia]
+
+    # Override temporário de período só pro Flavius (ver PERIODOS_ESPECIAIS_FLAVIUS
+    # acima). Como CONTAS_QUARTA só tem o Flavius, é seguro sobrescrever o
+    # período global aqui — não afeta segunda-feira (Clay/Tiago).
+    chave_data = hoje_br().isoformat()
+    if dia == "quarta" and chave_data in PERIODOS_ESPECIAIS_FLAVIUS:
+        since, until = PERIODOS_ESPECIAIS_FLAVIUS[chave_data]
+        print(f"[INFO] Período especial de julho aplicado pro Flavius: {since} a {until}")
 
     if not contas_do_dia:
         print(f"[AVISO] Nenhuma conta encontrada para o dia '{dia}'. "
