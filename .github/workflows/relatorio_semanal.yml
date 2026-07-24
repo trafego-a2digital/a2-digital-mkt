@@ -1,26 +1,21 @@
 name: Relatório Semanal de Metas
-
 on:
   schedule:
     - cron: "0 9 * * 1,3,5"  # seg/qua/sex às 6h Brasília (9h UTC)
   workflow_dispatch:
-
 jobs:
   enviar-relatorio:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Instalar dependências
         run: pip install requests
-
       - name: Rodar relatório
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID_GRUPO_CONGRESSOS: ${{ secrets.TELEGRAM_CHAT_ID_GRUPO_CONGRESSOS }}
         run: python relatorio_semanal_metas.py
