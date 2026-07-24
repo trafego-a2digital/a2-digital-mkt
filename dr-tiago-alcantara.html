@@ -1,0 +1,2317 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Dr. Tiago Alcântara · A2 Digital</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --gold:#F5A623;--gold-dim:rgba(245,166,35,0.15);--gold-border:rgba(245,166,35,0.3);
+  --bg:#0a0a0a;--surf:#111111;--surf2:#181818;--surf3:#202020;
+  --border:#222222;--border2:#2a2a2a;
+  --text:#efefef;--muted:#888;--dim:#444;
+  --green:#22c55e;--green-dim:rgba(34,197,94,0.12);
+  --red:#ef4444;--red-dim:rgba(239,68,68,0.12);
+  --blue:#3b82f6;--blue-dim:rgba(59,130,246,0.12);
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;min-height:100vh}
+.nav{position:fixed;top:0;left:0;right:0;z-index:200;background:rgba(10,10,10,0.96);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;gap:16px}
+.nav-left{display:flex;align-items:center;gap:14px;flex-shrink:0}
+.nav-logo{height:30px}
+.nav-divider{width:1px;height:22px;background:var(--border2)}
+.nav-client{font-size:14px;font-weight:600;color:var(--text);white-space:nowrap}
+.nav-tabs{display:flex;gap:2px;overflow-x:auto}
+.nav-tab{padding:6px 14px;border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:500;cursor:pointer;border-radius:6px;transition:all .15s;white-space:nowrap;font-family:inherit}
+.nav-tab:hover{color:var(--text);background:var(--surf2)}
+.nav-tab.active{background:var(--gold);color:#000;font-weight:700}
+.nav-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.updated-pill{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);padding:4px 10px;background:var(--surf2);border:1px solid var(--border2);border-radius:20px;white-space:nowrap}
+.updated-dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.page{display:none;padding-top:70px;min-height:100vh}
+.page.active{display:block}
+.page-inner{max-width:1200px;margin:0 auto;padding:32px 28px 80px}
+.sec-title{display:flex;align-items:center;gap:10px;margin-bottom:18px;margin-top:36px}
+.sec-title:first-child{margin-top:0}
+.sec-title h3{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--gold);white-space:nowrap}
+.sec-line{flex:1;height:1px;background:linear-gradient(to right,var(--border2),transparent)}
+.kpi-grid{display:grid;gap:10px}
+.kpi-grid-5{grid-template-columns:repeat(5,1fr)}
+.kpi-grid-4{grid-template-columns:repeat(4,1fr)}
+.kpi-grid-3{grid-template-columns:repeat(3,1fr)}
+.kcard{background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:18px 16px 14px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s}
+.kcard:hover{border-color:var(--border2);transform:translateY(-1px)}
+.kcard-accent{position:absolute;top:0;left:0;right:0;height:2px;background:var(--gold);opacity:0;transition:opacity .2s}
+.kcard:hover .kcard-accent{opacity:1}
+.kcard-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px}
+.kcard-value{font-size:24px;font-weight:800;color:var(--text);line-height:1;letter-spacing:-.02em;margin-bottom:7px}
+.kcard-value.gold{color:var(--gold)}
+.kcard-value.green{color:var(--green)}
+.kcard-value.red{color:var(--red)}
+.kcard-value.blue{color:var(--blue)}
+.kcard-delta{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px}
+.kcard-delta.up{background:var(--green-dim);color:var(--green)}
+.kcard-delta.down{background:var(--red-dim);color:var(--red)}
+.kcard-delta.neutral{background:var(--surf2);color:var(--muted)}
+.chart-row{display:grid;gap:12px;margin-bottom:12px}
+.chart-row-2{grid-template-columns:2fr 1fr}
+.chart-card{background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:20px}
+.chart-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.chart-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text)}
+.chart-legend{display:flex;gap:12px}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+.leg-dot{width:8px;height:8px;border-radius:50%}
+.chart-wrap{position:relative;height:200px}
+.chart-wrap-sm{position:relative;height:180px}
+.hbar-list{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.hbar-item{display:flex;align-items:center;gap:10px}
+.hbar-label{font-size:12px;color:var(--muted);width:130px;text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hbar-track{flex:1;background:var(--surf3);border-radius:4px;height:22px;overflow:hidden}
+.hbar-fill{height:100%;background:var(--gold);border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;min-width:46px}
+.hbar-val{font-size:11px;font-weight:700;color:#000}
+.camp-block{background:var(--surf);border:1px solid var(--border);border-radius:12px;margin-bottom:20px;overflow:hidden}
+.camp-hdr{display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:2px solid var(--gold);background:var(--surf2)}
+.camp-num{width:28px;height:28px;border-radius:50%;background:var(--gold);color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.camp-name{font-size:13px;font-weight:700;color:var(--text);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-border);background:var(--gold-dim);color:var(--gold);white-space:nowrap;flex-shrink:0}
+.badge-blue{border-color:rgba(59,130,246,.3);background:var(--blue-dim);color:var(--blue)}
+.badge-green{border-color:rgba(34,197,94,.3);background:var(--green-dim);color:var(--green)}
+.camp-kpis{display:grid;grid-template-columns:repeat(4,1fr)}
+.camp-kpi{padding:14px 20px;border-right:1px solid var(--border)}
+.camp-kpi:last-child{border-right:none}
+.camp-kpi-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:5px}
+.camp-kpi-val{font-size:20px;font-weight:800;color:var(--text)}
+.camp-kpi-val.gold{color:var(--gold)}
+.camp-kpi-val.green{color:var(--green)}
+.creat-sec{padding:16px 20px;border-top:1px solid var(--border)}
+.creat-sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:12px}
+.creat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.creat-card{background:var(--surf2);border:1px solid var(--border);border-radius:8px;padding:12px;transition:border-color .15s}
+.creat-card:hover{border-color:var(--gold-border)}
+.creat-rank{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.creat-num{width:20px;height:20px;border-radius:50%;background:var(--gold);color:#000;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.creat-name-link{font-size:12px;font-weight:600;color:var(--text);text-decoration:none;transition:color .15s;line-height:1.3}
+.creat-name-link:hover{color:var(--gold)}
+.creat-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+.creat-m{text-align:center;padding:5px 4px;background:var(--surf3);border-radius:5px}
+.creat-m-val{font-size:12px;font-weight:800;color:var(--text)}
+.creat-m-val.green{color:var(--green)}
+.creat-m-val.red{color:var(--red)}
+.creat-m-val.gold{color:var(--gold)}
+.creat-m-lbl{font-size:9px;color:var(--dim);margin-top:1px}
+.preview-btns{display:flex;gap:5px;margin-top:8px}
+.preview-btn{flex:1;padding:5px 4px;border:1px solid var(--border2);background:var(--surf3);color:var(--muted);font-size:10px;font-weight:600;border-radius:5px;cursor:pointer;text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;gap:3px;transition:all .15s;font-family:inherit}
+.preview-btn:hover{border-color:var(--gold-border);color:var(--gold)}
+.creat-table{background:var(--surf);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.ct-head{display:grid;grid-template-columns:2.5fr 1fr 1fr 1fr 1fr 1fr;padding:11px 20px;background:var(--surf2);border-bottom:1px solid var(--border)}
+.ct-th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--dim)}
+.ct-row{display:grid;grid-template-columns:2.5fr 1fr 1fr 1fr 1fr 1fr;padding:13px 20px;border-bottom:1px solid var(--border);align-items:center;transition:background .1s}
+.ct-row:last-child{border-bottom:none}
+.ct-row:hover{background:var(--surf2)}
+.ct-td{font-size:13px;color:var(--text)}
+.ct-creative{display:flex;align-items:center;gap:8px}
+.ct-thumb{width:34px;height:34px;border-radius:6px;background:var(--surf3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.ct-info{min-width:0}
+.ct-cname{font-size:12px;font-weight:600;color:var(--text);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;transition:color .15s}
+.ct-cname:hover{color:var(--gold)}
+.ct-camp-tag{font-size:10px;color:var(--dim);margin-top:1px}
+.dist-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.period-bar-inline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:24px}
+.period-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);white-space:nowrap}
+.period-btns{display:flex;gap:3px;flex-wrap:wrap}
+.pbtn{padding:5px 11px;border:1px solid var(--border2);background:transparent;color:var(--muted);font-size:11px;font-weight:500;cursor:pointer;border-radius:5px;transition:all .15s;white-space:nowrap;font-family:inherit}
+.pbtn:hover{border-color:var(--gold-border);color:var(--text)}
+.pbtn.active{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
+.custom-wrap{display:none;align-items:center;gap:6px}
+.custom-wrap.show{display:flex}
+.date-inp{background:var(--surf2);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:11px;padding:4px 8px;font-family:inherit;color-scheme:dark}
+.date-apply{padding:5px 12px;background:var(--gold);border:none;border-radius:5px;color:#000;font-weight:700;font-size:11px;cursor:pointer;font-family:inherit}
+.funil-wrap{display:flex;flex-direction:column;align-items:center;gap:0;width:100%;max-width:560px;margin:0 auto}
+.funil-stage{position:relative;display:flex;align-items:center;justify-content:center;transition:transform .15s}
+.funil-stage:hover{transform:scale(1.01)}
+.funil-trapezio{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px 20px;width:100%;cursor:default;transition:filter .15s}
+.funil-stage:hover .funil-trapezio{filter:brightness(1.1)}
+.funil-stage-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.7);margin-bottom:3px}
+.funil-stage-value{font-size:22px;font-weight:800;color:#fff;line-height:1;letter-spacing:-.02em}
+.funil-stage-sub{font-size:11px;color:rgba(255,255,255,.6);margin-top:3px}
+.funil-arrow{display:flex;align-items:center;justify-content:center;gap:16px;padding:6px 0;width:100%}
+.funil-arrow-line{flex:1;height:1px;background:var(--border2)}
+.funil-conv-badge{display:flex;flex-direction:column;align-items:center;gap:1px;padding:5px 14px;background:var(--surf2);border:1px solid var(--border2);border-radius:20px;white-space:nowrap}
+.funil-conv-pct{font-size:13px;font-weight:800;color:var(--gold)}
+.funil-conv-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+.funil-metrics-col{display:flex;flex-direction:column;gap:8px;min-width:200px}
+.funil-metric-row{background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:12px 16px}
+.funil-metric-etapa{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:4px}
+.funil-metric-items{display:flex;gap:16px;flex-wrap:wrap}
+.funil-metric-val{font-size:15px;font-weight:800;color:var(--text)}
+.funil-metric-val.gold{color:var(--gold)}
+.funil-metric-val.green{color:var(--green)}
+.funil-metric-lbl{font-size:10px;color:var(--dim);margin-top:1px}
+.funil-layout{display:grid;grid-template-columns:1fr 260px;gap:24px;align-items:start;margin-bottom:48px}
+.funil-plat-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;margin-bottom:16px}
+.funil-plat-meta{background:var(--blue-dim);color:var(--blue);border:1px solid rgba(59,130,246,.3)}
+.funil-plat-google{background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,.3)}
+.plat-split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.plat-card{background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:18px}
+.plat-card-hdr{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.plat-card-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.plat-rows{display:flex;flex-direction:column;gap:8px}
+.plat-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
+.plat-row:last-child{border-bottom:none}
+.plat-row-label{font-size:12px;color:var(--muted)}
+.plat-row-val{font-size:14px;font-weight:700;color:var(--text)}
+@media(max-width:900px){
+  .nav-tabs{max-width:40vw}
+  .kpi-grid-5{grid-template-columns:repeat(2,1fr)}
+  .kpi-grid-4{grid-template-columns:repeat(2,1fr)}
+  .kpi-grid-3{grid-template-columns:repeat(2,1fr)}
+  .chart-row-2{grid-template-columns:1fr}
+  .camp-kpis{grid-template-columns:repeat(2,1fr)}
+  .creat-grid{grid-template-columns:1fr 1fr}
+  .dist-grid{grid-template-columns:1fr}
+  .plat-split{grid-template-columns:1fr}
+  .funil-layout{grid-template-columns:1fr}
+  .ct-head,.ct-row{grid-template-columns:2fr 1fr 1fr}
+  .ct-th:nth-child(n+4),.ct-td:nth-child(n+4){display:none}
+}
+@media(max-width:600px){
+  .kpi-grid-5,.kpi-grid-4,.kpi-grid-3{grid-template-columns:1fr 1fr}
+  .creat-grid{grid-template-columns:1fr}
+  .page-inner{padding:24px 14px 60px}
+}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-left">
+    <img src="data:image/png;base64,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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHBk/x/pDIrI/jynGgAAAABJRU5ErkJggg==" class="nav-logo" alt="A2 Digital">
+    <div class="nav-divider"></div>
+    <span class="nav-client">Dr. Tiago Alcântara</span>
+  </div>
+  <div class="nav-tabs"><button class="nav-tab active" onclick="showPage('meta',this)">Visão Geral</button><button class="nav-tab" onclick="showPage('campanhas',this)">Campanhas</button><button class="nav-tab" onclick="showPage('criativos',this)">Criativos</button><button class="nav-tab" onclick="showPage('distribuicao',this)">Distribuição</button><button class="nav-tab" onclick="showPage('funil',this)">Funil</button></div>
+  <div class="nav-right">
+    <div class="updated-pill"><div class="updated-dot"></div>Atualizado 24/07 · 09:21</div>
+  </div>
+</nav>
+
+<div id="page-meta" class="page active">
+<div class="page-inner">
+  <div class="period-bar-inline">
+    <span class="period-label">Período</span>
+    <div class="period-btns">
+      <button class="pbtn" onclick="setPeriod(this,'1d')">Hoje</button>
+      <button class="pbtn" onclick="setPeriod(this,'7d')">7 dias</button>
+      <button class="pbtn active" onclick="setPeriod(this,'30d')">30 dias</button>
+      <button class="pbtn" onclick="setPeriod(this,'month')">Mês atual</button>
+      <button class="pbtn" onclick="setPeriod(this,'lmonth')">Mês passado</button>
+      <button class="pbtn" onclick="setPeriod(this,'90d')">3 meses</button>
+      <button class="pbtn" onclick="setPeriod(this,'180d')">6 meses</button>
+      <button class="pbtn" onclick="toggleCustom(this)">📅 Personalizado</button>
+    </div>
+    <div class="custom-wrap" id="customWrap">
+      <input type="date" class="date-inp" id="dateFrom">
+      <span style="color:var(--dim);font-size:11px">até</span>
+      <input type="date" class="date-inp" id="dateTo">
+      <button class="date-apply" onclick="applyCustom()">Aplicar</button>
+    </div>
+  </div>
+
+  <div class="sec-title"><h3>🎯 Visão Geral — Resultados <span id="periodTag" style="color:var(--dim);text-transform:none;letter-spacing:0">· últimos 30 dias</span></h3><div class="sec-line"></div></div>
+  <div class="kpi-grid kpi-grid-5"><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">Investimento</div>
+      <div class="kcard-value gold" id="mSpend">R$ 3.887</div>
+      <span class="kcard-delta neutral" id="mSpend-d"></span>
+    </div><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">Mensagens Iniciadas</div>
+      <div class="kcard-value" id="mResults">288</div>
+      <span class="kcard-delta neutral" id="mResults-d"></span>
+    </div><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">Custo por Resultado</div>
+      <div class="kcard-value green" id="mCpl">R$ 13,50</div>
+      <span class="kcard-delta neutral" id="mCpl-d"></span>
+    </div><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">Cliques no Link</div>
+      <div class="kcard-value" id="mClicks">2.031</div>
+      <span class="kcard-delta neutral" id="mClicks-d"></span>
+    </div><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">CTR</div>
+      <div class="kcard-value" id="mCtr">0,90%</div>
+      <span class="kcard-delta neutral" id="mCtr-d"></span>
+    </div></div>
+  <div class="sec-title"><h3>📡 Alcance & Entrega</h3><div class="sec-line"></div></div>
+  <div class="kpi-grid kpi-grid-4"><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">Alcance</div>
+      <div class="kcard-value">105.600</div>
+      <span class="kcard-delta neutral">últimos 30d (fixo)</span>
+    </div><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">Impressões</div>
+      <div class="kcard-value" id="mImp">224.811</div>
+      <span class="kcard-delta neutral" id="mImp-d"></span>
+    </div><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">Frequência</div>
+      <div class="kcard-value">2,13×</div>
+      <span class="kcard-delta neutral">últimos 30d (fixo)</span>
+    </div><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">CPM</div>
+      <div class="kcard-value" id="mCpm">R$ 17,29</div>
+      <span class="kcard-delta neutral" id="mCpm-d"></span>
+    </div></div>
+  <div class="sec-title"><h3>👆 Engajamento</h3><div class="sec-line"></div></div>
+  <div class="kpi-grid kpi-grid-5"><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">Cliques no Link</div>
+      <div class="kcard-value" id="mClicks">2.031</div>
+      <span class="kcard-delta neutral" id="mClicks-d"></span>
+    </div><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">CTR</div>
+      <div class="kcard-value" id="mCtr">0,90%</div>
+      <span class="kcard-delta neutral" id="mCtr-d"></span>
+    </div><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">CPC Médio</div>
+      <div class="kcard-value green" id="mCpc">R$ 1,91</div>
+      <span class="kcard-delta neutral" id="mCpc-d"></span>
+    </div><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">Visualiz. Vídeo</div>
+      <div class="kcard-value">62.376</div>
+      <span class="kcard-delta neutral">últimos 30d (fixo)</span>
+    </div><div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">ThruPlay (95%+)</div>
+      <div class="kcard-value">5.004</div>
+      <span class="kcard-delta neutral">últimos 30d (fixo)</span>
+    </div></div>
+
+  <div class="sec-title"><h3>⚖️ Comparativo de Períodos</h3><div class="sec-line"></div></div>
+  <div class="chart-row" style="grid-template-columns:1fr">
+    <div class="chart-card">
+      <div class="chart-head" style="flex-wrap:wrap;gap:10px">
+        <span class="chart-title">Comparar períodos personalizados</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--gold);font-weight:700">A</span>
+          <input type="date" class="date-inp" id="cmpAFrom">
+          <input type="date" class="date-inp" id="cmpATo">
+          <span style="font-size:10px;color:#888;font-weight:700;margin-left:6px">B</span>
+          <input type="date" class="date-inp" id="cmpBFrom">
+          <input type="date" class="date-inp" id="cmpBTo">
+          <button class="date-apply" onclick="applyCompare()">Comparar</button>
+        </div>
+      </div>
+      <div id="cmpSummary" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
+      <div class="chart-wrap"><canvas id="chartCompare"></canvas></div>
+    </div>
+  </div>
+
+  <div class="sec-title"><h3>📈 Evolução Diária</h3><div class="sec-line"></div></div>
+  <div class="chart-row chart-row-2">
+    <div class="chart-card">
+      <div class="chart-head">
+        <span class="chart-title">Investimento × Mensagens Iniciadas</span>
+        <div class="chart-legend">
+          <div class="leg-item"><div class="leg-dot" style="background:var(--gold)"></div>Investimento</div>
+          <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div>Mensagens Iniciadas</div>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="chartMetaDaily"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-head"><span class="chart-title">Mix de Resultados</span></div>
+      <div class="chart-wrap"><canvas id="chartMetaMix"></canvas></div>
+    </div>
+  </div>
+</div>
+</div>
+<div id="page-campanhas" class="page">
+<div class="page-inner">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+    <div class="sec-title" style="margin:0"><h3>📣 Campanhas Meta Ads</h3></div>
+    <div style="display:flex;gap:4px">
+      <button class="pbtn active" onclick="switchCampPeriod(this,'30d')">Últimos 30 dias</button>
+      <button class="pbtn" onclick="switchCampPeriod(this,'90d')">Últimos 3 meses</button>
+    </div>
+  </div>
+  <div id="campBlocks30">
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">1</div>
+      <div class="camp-name">[12][MSG ADV+][EASYLIPO][23.07.26] - contingência</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">6</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 21,11</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 3,52</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/2aTRrCYX7W7CjCj" target="_blank" class="creat-name-link">09 - ADV - Gabriela  Carneiro [02.06.2026]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">3</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 10,80</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 3,60</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2aTRrCYX7W7CjCj" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/1VyL6Nsrlup3uk9" target="_blank" class="creat-name-link">04 - ADV - Easy Lipo é uma lipo de verdade?</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">2</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 5,15</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val green">R$ 2,58</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/1VyL6Nsrlup3uk9" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">3</div>
+            <a href="https://fb.me/26uNFqdkI5zQcd2" target="_blank" class="creat-name-link">05 - ADV ORG - Easy Lipo - Flavius - Caixinha de perguntas</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">1</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 4,68</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val red">R$ 4,68</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/26uNFqdkI5zQcd2" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">2</div>
+      <div class="camp-name">[14][MSG ADV+][LIPOLIFTING][23.07.26] - contingência</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">1</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 21,09</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 21,09</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/21oi8wuucOruxZx" target="_blank" class="creat-name-link">03 - ADV - Lipolifting — editado</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">1</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 10,80</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val green">R$ 10,80</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/21oi8wuucOruxZx" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/24z90T3Z0w8vicN" target="_blank" class="creat-name-link">ADV4 - LIPEDEMA, LIPOLIFTING e EASYLIPO [06.04.2026]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 6,15</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/24z90T3Z0w8vicN" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">3</div>
+            <a href="https://fb.me/2awcloEsbdmMnTN" target="_blank" class="creat-name-link">ADV2 ORG - Lipolifting - Flavius</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 4,14</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2awcloEsbdmMnTN" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">3</div>
+      <div class="camp-name">[24][MSG][FUNIL][LIPOLIFTING][23.07.26] - contingência</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">5</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 21,66</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 4,33</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/29rtUvimulKotYi" target="_blank" class="creat-name-link">03 - ADV - Lipolifting — editado</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">5</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 21,66</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 4,33</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/29rtUvimulKotYi" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">4</div>
+      <div class="camp-name">[13][FUNIL][EASYLIPO]23.07.2026] - contingência</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">9</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 24,75</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 2,75</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/1VpU705SfWEfQLu" target="_blank" class="creat-name-link">05 - ADV - Easy Lipo Resultado</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">9</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 24,18</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 2,69</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/1VpU705SfWEfQLu" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/226t2onmx8TVPsR" target="_blank" class="creat-name-link">04 - ADV - Easy Lipo é uma lipo de verdade?</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 0,57</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/226t2onmx8TVPsR" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">5</div>
+      <div class="camp-name">[07][MSG][ADV+][Contorno Corporal][16.07.26]</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">18</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 159,57</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 8,87</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/1VqUPkzb8uaWV8P" target="_blank" class="creat-name-link">01 - ADV - contorno corporal</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">18</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 159,57</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 8,87</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/1VqUPkzb8uaWV8P" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">6</div>
+      <div class="camp-name">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+      <span class="badge">Engagement</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Engagement</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">0</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 272,13</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 0,00</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/27dGZ5I6lL74dXJ" target="_blank" class="creat-name-link">ADV12 - depoimento</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 3,69</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/27dGZ5I6lL74dXJ" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/yCMxDX5XiRzdhN6" target="_blank" class="creat-name-link">ADV09 - aproveitar a anestesia</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 1,07</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/yCMxDX5XiRzdhN6" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">3</div>
+            <a href="https://fb.me/qyfEPHDoPePlesN" target="_blank" class="creat-name-link">ADV08 - Plástica e Massa Muscular: Qual a Relação?</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 0,44</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/qyfEPHDoPePlesN" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">9</div>
+      <div class="camp-name">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">246</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 3.128</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 12,72</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/2loCi61zVByDD4N" target="_blank" class="creat-name-link">[ADV][Mastopexia]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">201</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 2.381</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 11,84</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2loCi61zVByDD4N" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/2md9LitHsCwaPF8" target="_blank" class="creat-name-link">[ADV][Flacidez mamaria]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">21</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 300,88</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 14,33</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2md9LitHsCwaPF8" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">3</div>
+            <a href="https://fb.me/26TzRu2NBanulUc" target="_blank" class="creat-name-link">ADV05 - paciente desistiu da cirurgia [02.07.2026]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">19</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 359,75</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val red">R$ 18,93</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/26TzRu2NBanulUc" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">17</div>
+      <div class="camp-name">[FUNIL] [02]</div>
+      <span class="badge">Engagement</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Engagement</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">3</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 238,77</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val ">R$ 79,59</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/1VEGZVcXVXCZVeg" target="_blank" class="creat-name-link">[06][ADV] —</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">3</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 229,23</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 76,41</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/1VEGZVcXVXCZVeg" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/1VkM6Dl967OeDGh" target="_blank" class="creat-name-link">[05][ADV]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 5,06</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/1VkM6Dl967OeDGh" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">3</div>
+            <a href="https://fb.me/2nybtmM6nKUoYJa" target="_blank" class="creat-name-link">[08][ADV]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 4,48</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2nybtmM6nKUoYJa" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div></div>
+  <div id="campBlocks90" style="display:none">
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">1</div>
+      <div class="camp-name">[12][MSG ADV+][EASYLIPO][23.07.26] - contingência</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">6</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 21,11</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 3,52</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/2CGBE0XV2v7zdKx" target="_blank" class="creat-name-link">09 - ADV - Gabriela  Carneiro [02.06.2026]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">3</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 10,80</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 3,60</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2CGBE0XV2v7zdKx" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/1Sk4MFXdv95AgnR" target="_blank" class="creat-name-link">04 - ADV - Easy Lipo é uma lipo de verdade?</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">2</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 5,15</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val green">R$ 2,58</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/1Sk4MFXdv95AgnR" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">3</div>
+            <a href="https://fb.me/29qFuEGi3bZ4P9g" target="_blank" class="creat-name-link">05 - ADV ORG - Easy Lipo - Flavius - Caixinha de perguntas</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">1</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 4,68</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val red">R$ 4,68</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/29qFuEGi3bZ4P9g" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">2</div>
+      <div class="camp-name">[14][MSG ADV+][LIPOLIFTING][23.07.26] - contingência</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">1</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 21,09</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 21,09</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/2j1zyKRNcQ9pJJ7" target="_blank" class="creat-name-link">03 - ADV - Lipolifting — editado</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">1</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 10,80</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val green">R$ 10,80</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2j1zyKRNcQ9pJJ7" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/2Zx4KBv2gALhcxu" target="_blank" class="creat-name-link">ADV4 - LIPEDEMA, LIPOLIFTING e EASYLIPO [06.04.2026]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 6,15</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2Zx4KBv2gALhcxu" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">3</div>
+            <a href="https://fb.me/2fikjLccEl8GRcL" target="_blank" class="creat-name-link">ADV2 ORG - Lipolifting - Flavius</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 4,14</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2fikjLccEl8GRcL" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">3</div>
+      <div class="camp-name">[24][MSG][FUNIL][LIPOLIFTING][23.07.26] - contingência</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">5</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 21,66</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 4,33</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/2aHv5cQ0kTV9BvZ" target="_blank" class="creat-name-link">03 - ADV - Lipolifting — editado</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">5</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 21,66</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 4,33</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2aHv5cQ0kTV9BvZ" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">4</div>
+      <div class="camp-name">[13][FUNIL][EASYLIPO]23.07.2026] - contingência</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">9</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 24,75</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 2,75</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/1QNjyhlPgJes4NR" target="_blank" class="creat-name-link">05 - ADV - Easy Lipo Resultado</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">9</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 24,18</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 2,69</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/1QNjyhlPgJes4NR" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/28NAjzIz936HQAk" target="_blank" class="creat-name-link">04 - ADV - Easy Lipo é uma lipo de verdade?</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 0,57</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/28NAjzIz936HQAk" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">5</div>
+      <div class="camp-name">[07][MSG][ADV+][Contorno Corporal][16.07.26]</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">18</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 159,57</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 8,87</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/yM0J1G1LM0sjhcp" target="_blank" class="creat-name-link">01 - ADV - contorno corporal</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">18</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 159,57</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 8,87</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/yM0J1G1LM0sjhcp" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">6</div>
+      <div class="camp-name">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+      <span class="badge">Engagement</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Engagement</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">0</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 272,13</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 0,00</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/26hvHMWE8OLPzFw" target="_blank" class="creat-name-link">ADV12 - depoimento</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 3,69</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/26hvHMWE8OLPzFw" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/22WdfVqO61FKIMu" target="_blank" class="creat-name-link">ADV09 - aproveitar a anestesia</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 1,07</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/22WdfVqO61FKIMu" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">3</div>
+            <a href="https://fb.me/1VovR4BkUXgQsJO" target="_blank" class="creat-name-link">ADV08 - Plástica e Massa Muscular: Qual a Relação?</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">0</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 0,44</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 0,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/1VovR4BkUXgQsJO" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">9</div>
+      <div class="camp-name">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+      <span class="badge">Sales</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Sales</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">246</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 3.128</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val green">R$ 12,72</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/2i5FxhmTJLA4tPJ" target="_blank" class="creat-name-link">[ADV][Mastopexia]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">450</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 4.498</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val green">R$ 10,00</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2i5FxhmTJLA4tPJ" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/23kfYg3Yh2SmRDK" target="_blank" class="creat-name-link">[ADV][Flacidez mamaria]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">31</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 394,17</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 12,72</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/23kfYg3Yh2SmRDK" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">3</div>
+            <a href="https://fb.me/ythBHEBGLUyYItS" target="_blank" class="creat-name-link">ADV05 - paciente desistiu da cirurgia [02.07.2026]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">19</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 359,75</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val red">R$ 18,93</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/ythBHEBGLUyYItS" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div>
+  <div class="camp-block">
+    <div class="camp-hdr">
+      <div class="camp-num">17</div>
+      <div class="camp-name">[FUNIL] [02]</div>
+      <span class="badge">Engagement</span>
+      <span class="badge badge-blue">Meta</span>
+    </div>
+    <div class="camp-kpis">
+      <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">Engagement</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Mensagens Iniciadas</div><div class="camp-kpi-val gold">3</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">R$ 238,77</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val ">R$ 79,59</div></div>
+    </div>
+    <div class="creat-sec">
+      <div class="creat-sec-title">🏆 Top Criativos</div>
+      <div class="creat-grid">
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">1</div>
+            <a href="https://fb.me/2j08ray8N18KBUi" target="_blank" class="creat-name-link">[06][ADV] —</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val gold">7</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 620,71</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val ">R$ 88,67</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/2j08ray8N18KBUi" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">2</div>
+            <a href="https://fb.me/27jd9CGuLVZJ0wS" target="_blank" class="creat-name-link">[05][ADV]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">4</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 60,92</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val green">R$ 15,23</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/27jd9CGuLVZJ0wS" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div>
+        <div class="creat-card">
+          <div class="creat-rank">
+            <div class="creat-num">3</div>
+            <a href="https://fb.me/277nhf9ISNhZmp9" target="_blank" class="creat-name-link">[08][ADV]</a>
+          </div>
+          <div class="creat-metrics">
+            <div class="creat-m"><div class="creat-m-val ">1</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val">R$ 27,41</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val green">R$ 27,41</div><div class="creat-m-lbl">Custo/Res.</div></div>
+          </div>
+          <div class="preview-btns">
+            <a href="https://fb.me/277nhf9ISNhZmp9" target="_blank" class="preview-btn">▶ Ver prévia</a>
+          </div>
+        </div></div>
+    </div>
+  </div></div>
+</div>
+</div>
+<div id="page-criativos" class="page">
+<div class="page-inner">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+    <div class="sec-title" style="margin:0"><h3>🎨 Ranking de Criativos — Meta Ads</h3></div>
+    <div style="display:flex;gap:4px">
+      <button class="pbtn active" onclick="switchCreatPeriod(this,'30d')">30 dias</button>
+      <button class="pbtn" onclick="switchCreatPeriod(this,'90d')">3 meses</button>
+    </div>
+  </div>
+  <div id="creatTable30"><div class="creat-table">
+    <div class="ct-head">
+      <div class="ct-th">Criativo</div><div class="ct-th">Invest.</div>
+      <div class="ct-th">Resultados</div><div class="ct-th">Custo/Res.</div>
+      <div class="ct-th">CTR</div><div class="ct-th">Prévia</div>
+    </div>
+    
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2loCi61zVByDD4N" target="_blank" class="ct-cname">[ADV][Mastopexia]</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 2.381</div>
+      <div class="ct-td" style="font-weight:700">201</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 11,84</div>
+      <div class="ct-td">0,89%</div>
+      <div class="ct-td"><a href="https://fb.me/2loCi61zVByDD4N" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2md9LitHsCwaPF8" target="_blank" class="ct-cname">[ADV][Flacidez mamaria]</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 300,88</div>
+      <div class="ct-td" style="font-weight:700">21</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 14,33</div>
+      <div class="ct-td">1,23%</div>
+      <div class="ct-td"><a href="https://fb.me/2md9LitHsCwaPF8" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/26TzRu2NBanulUc" target="_blank" class="ct-cname">ADV05 - paciente desistiu da cirurgia [02.07.2026]</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 359,75</div>
+      <div class="ct-td" style="font-weight:700">19</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 18,93</div>
+      <div class="ct-td">1,89%</div>
+      <div class="ct-td"><a href="https://fb.me/26TzRu2NBanulUc" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1VqUPkzb8uaWV8P" target="_blank" class="ct-cname">01 - ADV - contorno corporal</a>
+          <div class="ct-camp-tag">[07][MSG][ADV+][Contorno Corporal][16.07.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 159,57</div>
+      <div class="ct-td" style="font-weight:700">18</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 8,87</div>
+      <div class="ct-td">2,81%</div>
+      <div class="ct-td"><a href="https://fb.me/1VqUPkzb8uaWV8P" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1VpU705SfWEfQLu" target="_blank" class="ct-cname">05 - ADV - Easy Lipo Resultado</a>
+          <div class="ct-camp-tag">[13][FUNIL][EASYLIPO]23.07.2026] - contingênc</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 24,18</div>
+      <div class="ct-td" style="font-weight:700">9</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 2,69</div>
+      <div class="ct-td">10,46%</div>
+      <div class="ct-td"><a href="https://fb.me/1VpU705SfWEfQLu" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/29rtUvimulKotYi" target="_blank" class="ct-cname">03 - ADV - Lipolifting — editado</a>
+          <div class="ct-camp-tag">[24][MSG][FUNIL][LIPOLIFTING][23.07.26] - con</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 21,66</div>
+      <div class="ct-td" style="font-weight:700">5</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 4,33</div>
+      <div class="ct-td">3,60%</div>
+      <div class="ct-td"><a href="https://fb.me/29rtUvimulKotYi" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2aqKWAYS6CwF7ET" target="_blank" class="ct-cname">ADV06 - toda mãe quer uma coisa</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 29,15</div>
+      <div class="ct-td" style="font-weight:700">4</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 7,29</div>
+      <div class="ct-td">1,07%</div>
+      <div class="ct-td"><a href="https://fb.me/2aqKWAYS6CwF7ET" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2aTRrCYX7W7CjCj" target="_blank" class="ct-cname">09 - ADV - Gabriela  Carneiro [02.06.2026]</a>
+          <div class="ct-camp-tag">[12][MSG ADV+][EASYLIPO][23.07.26] - contingê</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 10,80</div>
+      <div class="ct-td" style="font-weight:700">3</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 3,60</div>
+      <div class="ct-td">7,08%</div>
+      <div class="ct-td"><a href="https://fb.me/2aTRrCYX7W7CjCj" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1VEGZVcXVXCZVeg" target="_blank" class="ct-cname">[06][ADV] —</a>
+          <div class="ct-camp-tag">[FUNIL] [02]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 229,23</div>
+      <div class="ct-td" style="font-weight:700">3</div>
+      <div class="ct-td" style="color:var(--red);font-weight:700">R$ 76,41</div>
+      <div class="ct-td">0,57%</div>
+      <div class="ct-td"><a href="https://fb.me/1VEGZVcXVXCZVeg" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1VyL6Nsrlup3uk9" target="_blank" class="ct-cname">04 - ADV - Easy Lipo é uma lipo de verdade?</a>
+          <div class="ct-camp-tag">[12][MSG ADV+][EASYLIPO][23.07.26] - contingê</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 5,15</div>
+      <div class="ct-td" style="font-weight:700">2</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 2,58</div>
+      <div class="ct-td">2,91%</div>
+      <div class="ct-td"><a href="https://fb.me/1VyL6Nsrlup3uk9" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/26uNFqdkI5zQcd2" target="_blank" class="ct-cname">05 - ADV ORG - Easy Lipo - Flavius - Caixinha de perguntas</a>
+          <div class="ct-camp-tag">[12][MSG ADV+][EASYLIPO][23.07.26] - contingê</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 4,68</div>
+      <div class="ct-td" style="font-weight:700">1</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 4,68</div>
+      <div class="ct-td">4,30%</div>
+      <div class="ct-td"><a href="https://fb.me/26uNFqdkI5zQcd2" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/21oi8wuucOruxZx" target="_blank" class="ct-cname">03 - ADV - Lipolifting — editado</a>
+          <div class="ct-camp-tag">[14][MSG ADV+][LIPOLIFTING][23.07.26] - conti</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 10,80</div>
+      <div class="ct-td" style="font-weight:700">1</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 10,80</div>
+      <div class="ct-td">2,48%</div>
+      <div class="ct-td"><a href="https://fb.me/21oi8wuucOruxZx" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1UVZfh8a8Irq356" target="_blank" class="ct-cname">ADV04 - cirurgia mamaria [15.04.2026]</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 38,36</div>
+      <div class="ct-td" style="font-weight:700">1</div>
+      <div class="ct-td" style="color:var(--red);font-weight:700">R$ 38,36</div>
+      <div class="ct-td">1,97%</div>
+      <div class="ct-td"><a href="https://fb.me/1UVZfh8a8Irq356" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2kX0I5Z443tIk7i" target="_blank" class="ct-cname">01 - ADV - Easy Lipo - Flavius - Consultorio</a>
+          <div class="ct-camp-tag">[12][MSG ADV+][EASYLIPO][23.07.26] - contingê</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 0,48</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,00%</div>
+      <div class="ct-td"><a href="https://fb.me/2kX0I5Z443tIk7i" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/24z90T3Z0w8vicN" target="_blank" class="ct-cname">ADV4 - LIPEDEMA, LIPOLIFTING e EASYLIPO [06.04.2026]</a>
+          <div class="ct-camp-tag">[14][MSG ADV+][LIPOLIFTING][23.07.26] - conti</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 6,15</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,60%</div>
+      <div class="ct-td"><a href="https://fb.me/24z90T3Z0w8vicN" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2awcloEsbdmMnTN" target="_blank" class="ct-cname">ADV2 ORG - Lipolifting - Flavius</a>
+          <div class="ct-camp-tag">[14][MSG ADV+][LIPOLIFTING][23.07.26] - conti</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 4,14</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">1,85%</div>
+      <div class="ct-td"><a href="https://fb.me/2awcloEsbdmMnTN" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/226t2onmx8TVPsR" target="_blank" class="ct-cname">04 - ADV - Easy Lipo é uma lipo de verdade?</a>
+          <div class="ct-camp-tag">[13][FUNIL][EASYLIPO]23.07.2026] - contingênc</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 0,57</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,00%</div>
+      <div class="ct-td"><a href="https://fb.me/226t2onmx8TVPsR" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/27dGZ5I6lL74dXJ" target="_blank" class="ct-cname">ADV12 - depoimento</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 3,69</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,72%</div>
+      <div class="ct-td"><a href="https://fb.me/27dGZ5I6lL74dXJ" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/yCMxDX5XiRzdhN6" target="_blank" class="ct-cname">ADV09 - aproveitar a anestesia</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 1,07</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,36%</div>
+      <div class="ct-td"><a href="https://fb.me/yCMxDX5XiRzdhN6" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/qyfEPHDoPePlesN" target="_blank" class="ct-cname">ADV08 - Plástica e Massa Muscular: Qual a Relação?</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 0,44</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,00%</div>
+      <div class="ct-td"><a href="https://fb.me/qyfEPHDoPePlesN" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1UONjbYa8Vn9ztU" target="_blank" class="ct-cname">ADV11 - cirurgia de mama</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 5,26</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,65%</div>
+      <div class="ct-td"><a href="https://fb.me/1UONjbYa8Vn9ztU" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2OxxpfOjTEvyyP3" target="_blank" class="ct-cname">ADV10 - depoimento Liana</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 2,39</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,52%</div>
+      <div class="ct-td"><a href="https://fb.me/2OxxpfOjTEvyyP3" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1Sz5A7Nj7KUm1gv" target="_blank" class="ct-cname">ADV04 - escolhendo prótese [25.05.2026]</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 1,24</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,84%</div>
+      <div class="ct-td"><a href="https://fb.me/1Sz5A7Nj7KUm1gv" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/yxXUou77W38TTCT" target="_blank" class="ct-cname">ADV05 - marcação [25.05.2026]</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 0,20</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,00%</div>
+      <div class="ct-td"><a href="https://fb.me/yxXUou77W38TTCT" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/291ZwDVVHbUVDYT" target="_blank" class="ct-cname">ADV06 - abdominoplastia [25.05.2026]</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 1,49</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,38%</div>
+      <div class="ct-td"><a href="https://fb.me/291ZwDVVHbUVDYT" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1VvrwrHPdPjiYG2" target="_blank" class="ct-cname">ADV07 - técnica preservé [25.05.2026]</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 84,31</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,74%</div>
+      <div class="ct-td"><a href="https://fb.me/1VvrwrHPdPjiYG2" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1UkCRYQm8oCQqAf" target="_blank" class="ct-cname">[ADV][Cirurgia mamária]</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 19,61</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,62%</div>
+      <div class="ct-td"><a href="https://fb.me/1UkCRYQm8oCQqAf" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1VkM6Dl967OeDGh" target="_blank" class="ct-cname">[05][ADV]</a>
+          <div class="ct-camp-tag">[FUNIL] [02]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 5,06</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,69%</div>
+      <div class="ct-td"><a href="https://fb.me/1VkM6Dl967OeDGh" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2nybtmM6nKUoYJa" target="_blank" class="ct-cname">[08][ADV]</a>
+          <div class="ct-camp-tag">[FUNIL] [02]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 4,48</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,61%</div>
+      <div class="ct-td"><a href="https://fb.me/2nybtmM6nKUoYJa" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+  </div></div>
+  <div id="creatTable90" style="display:none"><div class="creat-table">
+    <div class="ct-head">
+      <div class="ct-th">Criativo</div><div class="ct-th">Invest.</div>
+      <div class="ct-th">Resultados</div><div class="ct-th">Custo/Res.</div>
+      <div class="ct-th">CTR</div><div class="ct-th">Prévia</div>
+    </div>
+    
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2i5FxhmTJLA4tPJ" target="_blank" class="ct-cname">[ADV][Mastopexia]</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 4.498</div>
+      <div class="ct-td" style="font-weight:700">450</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 10,00</div>
+      <div class="ct-td">0,92%</div>
+      <div class="ct-td"><a href="https://fb.me/2i5FxhmTJLA4tPJ" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/23kfYg3Yh2SmRDK" target="_blank" class="ct-cname">[ADV][Flacidez mamaria]</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 394,17</div>
+      <div class="ct-td" style="font-weight:700">31</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 12,72</div>
+      <div class="ct-td">1,20%</div>
+      <div class="ct-td"><a href="https://fb.me/23kfYg3Yh2SmRDK" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/ythBHEBGLUyYItS" target="_blank" class="ct-cname">ADV05 - paciente desistiu da cirurgia [02.07.2026]</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 359,75</div>
+      <div class="ct-td" style="font-weight:700">19</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 18,93</div>
+      <div class="ct-td">1,89%</div>
+      <div class="ct-td"><a href="https://fb.me/ythBHEBGLUyYItS" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/yM0J1G1LM0sjhcp" target="_blank" class="ct-cname">01 - ADV - contorno corporal</a>
+          <div class="ct-camp-tag">[07][MSG][ADV+][Contorno Corporal][16.07.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 159,57</div>
+      <div class="ct-td" style="font-weight:700">18</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 8,87</div>
+      <div class="ct-td">2,81%</div>
+      <div class="ct-td"><a href="https://fb.me/yM0J1G1LM0sjhcp" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1QG2B1OlboSUVWt" target="_blank" class="ct-cname">[ADV][Cirurgia mamária]</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 267,87</div>
+      <div class="ct-td" style="font-weight:700">16</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 16,74</div>
+      <div class="ct-td">0,91%</div>
+      <div class="ct-td"><a href="https://fb.me/1QG2B1OlboSUVWt" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2hW7Z6TiP6ERUTH" target="_blank" class="ct-cname">ADV04 - cirurgia mamaria [15.04.2026]</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 139,65</div>
+      <div class="ct-td" style="font-weight:700">15</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 9,31</div>
+      <div class="ct-td">1,27%</div>
+      <div class="ct-td"><a href="https://fb.me/2hW7Z6TiP6ERUTH" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1QNjyhlPgJes4NR" target="_blank" class="ct-cname">05 - ADV - Easy Lipo Resultado</a>
+          <div class="ct-camp-tag">[13][FUNIL][EASYLIPO]23.07.2026] - contingênc</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 24,18</div>
+      <div class="ct-td" style="font-weight:700">9</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 2,69</div>
+      <div class="ct-td">10,46%</div>
+      <div class="ct-td"><a href="https://fb.me/1QNjyhlPgJes4NR" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2j08ray8N18KBUi" target="_blank" class="ct-cname">[06][ADV] —</a>
+          <div class="ct-camp-tag">[FUNIL] [02]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 620,71</div>
+      <div class="ct-td" style="font-weight:700">7</div>
+      <div class="ct-td" style="color:var(--red);font-weight:700">R$ 88,67</div>
+      <div class="ct-td">0,65%</div>
+      <div class="ct-td"><a href="https://fb.me/2j08ray8N18KBUi" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2aHv5cQ0kTV9BvZ" target="_blank" class="ct-cname">03 - ADV - Lipolifting — editado</a>
+          <div class="ct-camp-tag">[24][MSG][FUNIL][LIPOLIFTING][23.07.26] - con</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 21,66</div>
+      <div class="ct-td" style="font-weight:700">5</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 4,33</div>
+      <div class="ct-td">3,60%</div>
+      <div class="ct-td"><a href="https://fb.me/2aHv5cQ0kTV9BvZ" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2rHNBDn5VLzoSAW" target="_blank" class="ct-cname">ADV06 - toda mãe quer uma coisa</a>
+          <div class="ct-camp-tag">[04][MSG][ADV+][MAMAS][04][18.02.26]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 29,15</div>
+      <div class="ct-td" style="font-weight:700">4</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 7,29</div>
+      <div class="ct-td">1,07%</div>
+      <div class="ct-td"><a href="https://fb.me/2rHNBDn5VLzoSAW" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/27jd9CGuLVZJ0wS" target="_blank" class="ct-cname">[05][ADV]</a>
+          <div class="ct-camp-tag">[FUNIL] [02]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 60,92</div>
+      <div class="ct-td" style="font-weight:700">4</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 15,23</div>
+      <div class="ct-td">0,82%</div>
+      <div class="ct-td"><a href="https://fb.me/27jd9CGuLVZJ0wS" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2CGBE0XV2v7zdKx" target="_blank" class="ct-cname">09 - ADV - Gabriela  Carneiro [02.06.2026]</a>
+          <div class="ct-camp-tag">[12][MSG ADV+][EASYLIPO][23.07.26] - contingê</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 10,80</div>
+      <div class="ct-td" style="font-weight:700">3</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 3,60</div>
+      <div class="ct-td">7,08%</div>
+      <div class="ct-td"><a href="https://fb.me/2CGBE0XV2v7zdKx" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1Sk4MFXdv95AgnR" target="_blank" class="ct-cname">04 - ADV - Easy Lipo é uma lipo de verdade?</a>
+          <div class="ct-camp-tag">[12][MSG ADV+][EASYLIPO][23.07.26] - contingê</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 5,15</div>
+      <div class="ct-td" style="font-weight:700">2</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 2,58</div>
+      <div class="ct-td">2,91%</div>
+      <div class="ct-td"><a href="https://fb.me/1Sk4MFXdv95AgnR" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/29qFuEGi3bZ4P9g" target="_blank" class="ct-cname">05 - ADV ORG - Easy Lipo - Flavius - Caixinha de perguntas</a>
+          <div class="ct-camp-tag">[12][MSG ADV+][EASYLIPO][23.07.26] - contingê</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 4,68</div>
+      <div class="ct-td" style="font-weight:700">1</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 4,68</div>
+      <div class="ct-td">4,30%</div>
+      <div class="ct-td"><a href="https://fb.me/29qFuEGi3bZ4P9g" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2j1zyKRNcQ9pJJ7" target="_blank" class="ct-cname">03 - ADV - Lipolifting — editado</a>
+          <div class="ct-camp-tag">[14][MSG ADV+][LIPOLIFTING][23.07.26] - conti</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 10,80</div>
+      <div class="ct-td" style="font-weight:700">1</div>
+      <div class="ct-td" style="color:var(--green);font-weight:700">R$ 10,80</div>
+      <div class="ct-td">2,48%</div>
+      <div class="ct-td"><a href="https://fb.me/2j1zyKRNcQ9pJJ7" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/277nhf9ISNhZmp9" target="_blank" class="ct-cname">[08][ADV]</a>
+          <div class="ct-camp-tag">[FUNIL] [02]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 27,41</div>
+      <div class="ct-td" style="font-weight:700">1</div>
+      <div class="ct-td" style="font-weight:700">R$ 27,41</div>
+      <div class="ct-td">0,71%</div>
+      <div class="ct-td"><a href="https://fb.me/277nhf9ISNhZmp9" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/21FdcVserRrswqn" target="_blank" class="ct-cname">01 - ADV - Easy Lipo - Flavius - Consultorio</a>
+          <div class="ct-camp-tag">[12][MSG ADV+][EASYLIPO][23.07.26] - contingê</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 0,48</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,00%</div>
+      <div class="ct-td"><a href="https://fb.me/21FdcVserRrswqn" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2Zx4KBv2gALhcxu" target="_blank" class="ct-cname">ADV4 - LIPEDEMA, LIPOLIFTING e EASYLIPO [06.04.2026]</a>
+          <div class="ct-camp-tag">[14][MSG ADV+][LIPOLIFTING][23.07.26] - conti</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 6,15</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,60%</div>
+      <div class="ct-td"><a href="https://fb.me/2Zx4KBv2gALhcxu" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2fikjLccEl8GRcL" target="_blank" class="ct-cname">ADV2 ORG - Lipolifting - Flavius</a>
+          <div class="ct-camp-tag">[14][MSG ADV+][LIPOLIFTING][23.07.26] - conti</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 4,14</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">1,85%</div>
+      <div class="ct-td"><a href="https://fb.me/2fikjLccEl8GRcL" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/28NAjzIz936HQAk" target="_blank" class="ct-cname">04 - ADV - Easy Lipo é uma lipo de verdade?</a>
+          <div class="ct-camp-tag">[13][FUNIL][EASYLIPO]23.07.2026] - contingênc</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 0,57</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,00%</div>
+      <div class="ct-td"><a href="https://fb.me/28NAjzIz936HQAk" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/26hvHMWE8OLPzFw" target="_blank" class="ct-cname">ADV12 - depoimento</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 3,69</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,72%</div>
+      <div class="ct-td"><a href="https://fb.me/26hvHMWE8OLPzFw" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/22WdfVqO61FKIMu" target="_blank" class="ct-cname">ADV09 - aproveitar a anestesia</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 1,07</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,36%</div>
+      <div class="ct-td"><a href="https://fb.me/22WdfVqO61FKIMu" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1VovR4BkUXgQsJO" target="_blank" class="ct-cname">ADV08 - Plástica e Massa Muscular: Qual a Relação?</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 0,44</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,00%</div>
+      <div class="ct-td"><a href="https://fb.me/1VovR4BkUXgQsJO" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/29CzTKQJQn7wxTU" target="_blank" class="ct-cname">ADV11 - cirurgia de mama</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 5,26</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,65%</div>
+      <div class="ct-td"><a href="https://fb.me/29CzTKQJQn7wxTU" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2gVZr21RdGMdirt" target="_blank" class="ct-cname">ADV10 - depoimento Liana</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 2,39</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,52%</div>
+      <div class="ct-td"><a href="https://fb.me/2gVZr21RdGMdirt" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/29mi58Ea2DK0Xmq" target="_blank" class="ct-cname">ADV04 - escolhendo prótese [25.05.2026]</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 5,03</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">1,08%</div>
+      <div class="ct-td"><a href="https://fb.me/29mi58Ea2DK0Xmq" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/2iijZrbCBuA99w0" target="_blank" class="ct-cname">ADV05 - marcação [25.05.2026]</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 2,50</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,22%</div>
+      <div class="ct-td"><a href="https://fb.me/2iijZrbCBuA99w0" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1VIgZZll7mRR6oo" target="_blank" class="ct-cname">ADV06 - abdominoplastia [25.05.2026]</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 8,77</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,62%</div>
+      <div class="ct-td"><a href="https://fb.me/1VIgZZll7mRR6oo" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+    <div class="ct-row">
+      <div class="ct-td ct-creative">
+        <div class="ct-thumb">🎨</div>
+        <div class="ct-info">
+          <a href="https://fb.me/1Rq8T4mplKZiWlx" target="_blank" class="ct-cname">ADV07 - técnica preservé [25.05.2026]</a>
+          <div class="ct-camp-tag">[06][VIDEO VIEW][Atrair audiênia][01.04.2026]</div>
+        </div>
+      </div>
+      <div class="ct-td">R$ 254,58</div>
+      <div class="ct-td" style="font-weight:700">0</div>
+      <div class="ct-td" style="font-weight:700">R$ 0,00</div>
+      <div class="ct-td">0,83%</div>
+      <div class="ct-td"><a href="https://fb.me/1Rq8T4mplKZiWlx" target="_blank" class="preview-btn" style="width:auto;padding:4px 10px">▶ Ver</a></div>
+    </div>
+  </div></div>
+</div>
+</div>
+<div id="page-distribuicao" class="page">
+<div class="page-inner">
+  <div class="sec-title"><h3>📊 Distribuição por Campanha — Meta Ads</h3><div class="sec-line"></div></div>
+  <div class="dist-grid">
+    <div class="chart-card">
+      <div class="chart-head"><span class="chart-title">Mensagens Iniciadas por Campanha</span></div>
+      <div class="chart-wrap-sm"><canvas id="chartDistDonut"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-head"><span class="chart-title">Custo/Resultado por Campanha</span></div>
+      <div style="padding:8px 0"><div class="hbar-list"><div class="hbar-item">
+      <div class="hbar-label">[12][MSG ADV+][EASYLIPO][23.07.2</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:3%;background:var(--green)"><span class="hbar-val">R$3,52</span></div></div>
+    </div><div class="hbar-item">
+      <div class="hbar-label">[14][MSG ADV+][LIPOLIFTING][23.0</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:23%;background:var(--gold)"><span class="hbar-val">R$21,09</span></div></div>
+    </div><div class="hbar-item">
+      <div class="hbar-label">[24][MSG][FUNIL][LIPOLIFTING][23</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:4%;background:var(--green)"><span class="hbar-val">R$4,33</span></div></div>
+    </div><div class="hbar-item">
+      <div class="hbar-label">[13][FUNIL][EASYLIPO]23.07.2026]</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:3%;background:var(--green)"><span class="hbar-val">R$2,75</span></div></div>
+    </div><div class="hbar-item">
+      <div class="hbar-label">[07][MSG][ADV+][Contorno Corpora</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:9%;background:var(--green)"><span class="hbar-val">R$8,87</span></div></div>
+    </div><div class="hbar-item">
+      <div class="hbar-label">[06][VIDEO VIEW][Atrair audiênia</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:0%;background:var(--green)"><span class="hbar-val">R$0,00</span></div></div>
+    </div><div class="hbar-item">
+      <div class="hbar-label">[04][MSG][ADV+][MAMAS][04][18.02</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:13%;background:var(--green)"><span class="hbar-val">R$12,72</span></div></div>
+    </div><div class="hbar-item">
+      <div class="hbar-label">[FUNIL] [02]</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:86%;background:var(--red)"><span class="hbar-val">R$79,59</span></div></div>
+    </div></div></div>
+    </div>
+  </div>
+</div>
+</div>
+<div id="page-funil" class="page">
+<div class="page-inner">
+  
+  <div class="sec-title"><h3>🔽 Funil de Mensagens — Meta Ads</h3><div class="sec-line"></div></div>
+  <div class="funil-layout">
+    <div>
+      <div style="text-align:center;margin-bottom:20px">
+        <span class="funil-plat-badge funil-plat-meta">● Meta Ads</span>
+      </div>
+      <div class="funil-wrap">
+        <div class="funil-stage" style="width:100%">
+          <div class="funil-trapezio" style="background:linear-gradient(135deg,#0ea5e9,#0284c7);clip-path:polygon(8% 0%,92% 0%,96% 100%,4% 100%)">
+            <div class="funil-stage-label">Alcance</div>
+            <div class="funil-stage-value">105.600</div>
+            <div class="funil-stage-sub">pessoas únicas</div>
+          </div>
+        </div>
+        <div class="funil-arrow">
+          <div class="funil-arrow-line"></div>
+          <div class="funil-conv-badge">
+            <span class="funil-conv-pct">1,92%</span>
+            <span class="funil-conv-label">clicaram</span>
+          </div>
+          <div class="funil-arrow-line"></div>
+        </div>
+        <div class="funil-stage" style="width:88%">
+          <div class="funil-trapezio" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);clip-path:polygon(6% 0%,94% 0%,98% 100%,2% 100%)">
+            <div class="funil-stage-label">Cliques no Link</div>
+            <div class="funil-stage-value">2.031</div>
+            <div class="funil-stage-sub">CTR 0,90%</div>
+          </div>
+        </div>
+        <div class="funil-arrow">
+          <div class="funil-arrow-line"></div>
+          <div class="funil-conv-badge">
+            <span class="funil-conv-pct">14,18%</span>
+            <span class="funil-conv-label">enviaram msg</span>
+          </div>
+          <div class="funil-arrow-line"></div>
+        </div>
+        <div class="funil-stage" style="width:72%">
+          <div class="funil-trapezio" style="background:linear-gradient(135deg,#F5A623,#d97706);clip-path:polygon(5% 0%,95% 0%,99% 100%,1% 100%)">
+            <div class="funil-stage-label">Mensagens Iniciadas</div>
+            <div class="funil-stage-value">288</div>
+            <div class="funil-stage-sub">conversas abertas</div>
+          </div>
+        </div>
+        <div class="funil-arrow">
+          <div class="funil-arrow-line"></div>
+          <div class="funil-conv-badge">
+            <span class="funil-conv-pct">custo</span>
+            <span class="funil-conv-label">por mensagem</span>
+          </div>
+          <div class="funil-arrow-line"></div>
+        </div>
+        <div class="funil-stage" style="width:56%">
+          <div class="funil-trapezio" style="background:linear-gradient(135deg,#22c55e,#16a34a);clip-path:polygon(4% 0%,96% 0%,100% 100%,0% 100%)">
+            <div class="funil-stage-label">Custo por Mensagem</div>
+            <div class="funil-stage-value">R$ 13,50</div>
+            <div class="funil-stage-sub">por conversa iniciada</div>
+          </div>
+        </div></div>
+    </div>
+    <div class="funil-metrics-col">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:4px">Métricas por Etapa</div>
+      
+      <div class="funil-metric-row">
+        <div class="funil-metric-etapa">Etapa 1 — Entrega</div>
+        <div class="funil-metric-items"><div><div class="funil-metric-val ">105.600</div><div class="funil-metric-lbl">Alcance</div></div><div><div class="funil-metric-val ">224.811</div><div class="funil-metric-lbl">Impressões</div></div><div><div class="funil-metric-val ">R$ 17,29</div><div class="funil-metric-lbl">CPM</div></div></div>
+      </div>
+      <div class="funil-metric-row">
+        <div class="funil-metric-etapa">Etapa 2 — Engajamento</div>
+        <div class="funil-metric-items"><div><div class="funil-metric-val ">0,90%</div><div class="funil-metric-lbl">CTR</div></div><div><div class="funil-metric-val ">2.031</div><div class="funil-metric-lbl">Cliques</div></div><div><div class="funil-metric-val ">R$ 1,91</div><div class="funil-metric-lbl">CPC</div></div></div>
+      </div>
+      <div class="funil-metric-row">
+        <div class="funil-metric-etapa">Etapa 3 — Conversão</div>
+        <div class="funil-metric-items"><div><div class="funil-metric-val gold">288</div><div class="funil-metric-lbl">Mensagens</div></div><div><div class="funil-metric-val ">14,18%</div><div class="funil-metric-lbl">Conv. Clique→Msg</div></div></div>
+      </div>
+      <div class="funil-metric-row">
+        <div class="funil-metric-etapa">Etapa 4 — Custo</div>
+        <div class="funil-metric-items"><div><div class="funil-metric-val green">R$ 13,50</div><div class="funil-metric-lbl">Custo/Mensagem</div></div><div><div class="funil-metric-val gold">R$ 3.887</div><div class="funil-metric-lbl">Investimento</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<script>
+function switchCampPeriod(btn, p) {
+  document.querySelectorAll('#page-campanhas .pbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('campBlocks30').style.display = p === '30d' ? '' : 'none';
+  document.getElementById('campBlocks90').style.display = p === '90d' ? '' : 'none';
+}
+function switchCreatPeriod(btn, p) {
+  document.querySelectorAll('#page-criativos .pbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('creatTable30').style.display = p === '30d' ? '' : 'none';
+  document.getElementById('creatTable90').style.display = p === '90d' ? '' : 'none';
+}
+function showPage(id,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+}
+Chart.defaults.color='#666';Chart.defaults.borderColor='#222';Chart.defaults.font.family='Inter';
+
+  const DM = [{"d": "2026-01-25", "s": 71.83, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 431, "i": 17614}, {"d": "2026-01-26", "s": 65.86, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 391, "i": 14975}, {"d": "2026-01-27", "s": 69.55, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 421, "i": 15586}, {"d": "2026-01-28", "s": 66.32, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 376, "i": 14361}, {"d": "2026-01-29", "s": 66.05, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 383, "i": 13628}, {"d": "2026-01-30", "s": 65.55, "r": 0, "m": 0, "p": 1, "v": 24.0, "c": 405, "i": 14309}, {"d": "2026-01-31", "s": 63.82, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 370, "i": 15925}, {"d": "2026-02-01", "s": 74.52, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 431, "i": 21320}, {"d": "2026-02-02", "s": 66.68, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 421, "i": 17588}, {"d": "2026-02-03", "s": 85.76, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 428, "i": 19511}, {"d": "2026-02-04", "s": 89.35, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 437, "i": 19117}, {"d": "2026-02-05", "s": 87.23, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 408, "i": 17612}, {"d": "2026-02-06", "s": 84.7, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 387, "i": 16045}, {"d": "2026-02-07", "s": 78.41, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 403, "i": 17964}, {"d": "2026-02-08", "s": 92.55, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 425, "i": 22077}, {"d": "2026-02-09", "s": 61.46, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 365, "i": 13814}, {"d": "2026-02-10", "s": 40.39, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 365, "i": 10314}, {"d": "2026-02-11", "s": 39.66, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 308, "i": 9633}, {"d": "2026-02-12", "s": 39.82, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 350, "i": 9960}, {"d": "2026-02-13", "s": 39.28, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 330, "i": 10962}, {"d": "2026-02-14", "s": 37.83, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 389, "i": 11764}, {"d": "2026-02-15", "s": 44.37, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 430, "i": 14657}, {"d": "2026-02-16", "s": 48.18, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 411, "i": 15913}, {"d": "2026-02-17", "s": 51.15, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 430, "i": 16603}, {"d": "2026-02-18", "s": 233.44, "r": 77, "m": 77, "p": 0, "v": 0.0, "c": 630, "i": 26446}, {"d": "2026-02-19", "s": 196.81, "r": 34, "m": 34, "p": 0, "v": 0.0, "c": 524, "i": 21600}, {"d": "2026-02-20", "s": 202.31, "r": 21, "m": 21, "p": 0, "v": 0.0, "c": 460, "i": 22521}, {"d": "2026-02-21", "s": 221.75, "r": 37, "m": 37, "p": 0, "v": 0.0, "c": 510, "i": 22910}, {"d": "2026-02-22", "s": 198.2, "r": 18, "m": 18, "p": 0, "v": 0.0, "c": 510, "i": 22961}, {"d": "2026-02-23", "s": 252.95, "r": 19, "m": 19, "p": 0, "v": 0.0, "c": 491, "i": 22475}, {"d": "2026-02-24", "s": 335.91, "r": 26, "m": 26, "p": 0, "v": 0.0, "c": 539, "i": 24985}, {"d": "2026-02-25", "s": 241.94, "r": 14, "m": 14, "p": 0, "v": 0.0, "c": 455, "i": 20949}, {"d": "2026-02-26", "s": 218.52, "r": 16, "m": 16, "p": 0, "v": 0.0, "c": 479, "i": 20465}, {"d": "2026-02-27", "s": 202.64, "r": 18, "m": 18, "p": 0, "v": 0.0, "c": 446, "i": 20241}, {"d": "2026-02-28", "s": 238.75, "r": 26, "m": 26, "p": 0, "v": 0.0, "c": 486, "i": 22692}, {"d": "2026-03-01", "s": 192.01, "r": 17, "m": 17, "p": 0, "v": 0.0, "c": 573, "i": 26138}, {"d": "2026-03-02", "s": 276.59, "r": 19, "m": 19, "p": 0, "v": 0.0, "c": 443, "i": 26021}, {"d": "2026-03-03", "s": 379.05, "r": 24, "m": 24, "p": 0, "v": 0.0, "c": 531, "i": 28426}, {"d": "2026-03-04", "s": 301.3, "r": 22, "m": 22, "p": 0, "v": 0.0, "c": 512, "i": 25914}, {"d": "2026-03-05", "s": 166.7, "r": 13, "m": 13, "p": 0, "v": 0.0, "c": 371, "i": 16608}, {"d": "2026-03-06", "s": 163.73, "r": 13, "m": 13, "p": 0, "v": 0.0, "c": 364, "i": 16102}, {"d": "2026-03-07", "s": 208.22, "r": 26, "m": 26, "p": 0, "v": 0.0, "c": 427, "i": 20378}, {"d": "2026-03-08", "s": 171.53, "r": 6, "m": 6, "p": 0, "v": 0.0, "c": 418, "i": 19840}, {"d": "2026-03-09", "s": 258.35, "r": 13, "m": 13, "p": 0, "v": 0.0, "c": 445, "i": 22015}, {"d": "2026-03-10", "s": 349.26, "r": 27, "m": 27, "p": 0, "v": 0.0, "c": 460, "i": 26300}, {"d": "2026-03-11", "s": 248.87, "r": 20, "m": 20, "p": 0, "v": 0.0, "c": 412, "i": 22037}, {"d": "2026-03-12", "s": 250.81, "r": 16, "m": 16, "p": 0, "v": 0.0, "c": 402, "i": 20808}, {"d": "2026-03-13", "s": 184.01, "r": 18, "m": 18, "p": 0, "v": 0.0, "c": 446, "i": 21090}, {"d": "2026-03-14", "s": 218.32, "r": 17, "m": 17, "p": 0, "v": 0.0, "c": 402, "i": 22461}, {"d": "2026-03-15", "s": 142.16, "r": 12, "m": 12, "p": 0, "v": 0.0, "c": 419, "i": 19294}, {"d": "2026-03-16", "s": 309.87, "r": 26, "m": 26, "p": 0, "v": 0.0, "c": 431, "i": 25392}, {"d": "2026-03-17", "s": 304.62, "r": 22, "m": 22, "p": 0, "v": 0.0, "c": 506, "i": 26981}, {"d": "2026-03-18", "s": 267.83, "r": 25, "m": 25, "p": 0, "v": 0.0, "c": 467, "i": 26750}, {"d": "2026-03-19", "s": 277.05, "r": 19, "m": 19, "p": 0, "v": 0.0, "c": 447, "i": 27556}, {"d": "2026-03-20", "s": 246.3, "r": 20, "m": 20, "p": 0, "v": 0.0, "c": 413, "i": 22725}, {"d": "2026-03-21", "s": 277.27, "r": 26, "m": 26, "p": 0, "v": 0.0, "c": 442, "i": 27119}, {"d": "2026-03-22", "s": 239.11, "r": 20, "m": 20, "p": 0, "v": 0.0, "c": 463, "i": 23943}, {"d": "2026-03-23", "s": 397.47, "r": 27, "m": 27, "p": 0, "v": 0.0, "c": 508, "i": 34310}, {"d": "2026-03-24", "s": 372.73, "r": 25, "m": 25, "p": 0, "v": 0.0, "c": 502, "i": 29943}, {"d": "2026-03-25", "s": 267.33, "r": 28, "m": 28, "p": 0, "v": 0.0, "c": 420, "i": 25383}, {"d": "2026-03-26", "s": 205.87, "r": 8, "m": 8, "p": 0, "v": 0.0, "c": 363, "i": 17554}, {"d": "2026-03-27", "s": 303.71, "r": 26, "m": 26, "p": 0, "v": 0.0, "c": 449, "i": 28133}, {"d": "2026-03-28", "s": 158.16, "r": 15, "m": 15, "p": 0, "v": 0.0, "c": 371, "i": 19248}, {"d": "2026-03-29", "s": 190.59, "r": 11, "m": 11, "p": 0, "v": 0.0, "c": 420, "i": 20683}, {"d": "2026-03-30", "s": 243.61, "r": 12, "m": 12, "p": 0, "v": 0.0, "c": 448, "i": 23224}, {"d": "2026-03-31", "s": 392.05, "r": 29, "m": 29, "p": 0, "v": 0.0, "c": 456, "i": 30183}, {"d": "2026-04-01", "s": 351.68, "r": 24, "m": 24, "p": 0, "v": 0.0, "c": 619, "i": 35579}, {"d": "2026-04-02", "s": 220.68, "r": 18, "m": 18, "p": 0, "v": 0.0, "c": 297, "i": 21642}, {"d": "2026-04-03", "s": 223.88, "r": 22, "m": 22, "p": 0, "v": 0.0, "c": 393, "i": 24348}, {"d": "2026-04-04", "s": 241.32, "r": 12, "m": 12, "p": 0, "v": 0.0, "c": 361, "i": 26054}, {"d": "2026-04-05", "s": 256.98, "r": 14, "m": 14, "p": 0, "v": 0.0, "c": 466, "i": 27281}, {"d": "2026-04-06", "s": 269.18, "r": 16, "m": 16, "p": 0, "v": 0.0, "c": 421, "i": 25372}, {"d": "2026-04-07", "s": 340.53, "r": 14, "m": 14, "p": 0, "v": 0.0, "c": 482, "i": 25917}, {"d": "2026-04-08", "s": 330.63, "r": 15, "m": 15, "p": 0, "v": 0.0, "c": 447, "i": 24862}, {"d": "2026-04-09", "s": 169.12, "r": 6, "m": 6, "p": 0, "v": 0.0, "c": 372, "i": 20427}, {"d": "2026-04-10", "s": 199.37, "r": 11, "m": 11, "p": 0, "v": 0.0, "c": 389, "i": 21639}, {"d": "2026-04-11", "s": 218.96, "r": 16, "m": 16, "p": 0, "v": 0.0, "c": 349, "i": 21439}, {"d": "2026-04-12", "s": 191.56, "r": 8, "m": 8, "p": 0, "v": 0.0, "c": 435, "i": 26273}, {"d": "2026-04-13", "s": 258.12, "r": 6, "m": 6, "p": 0, "v": 0.0, "c": 429, "i": 26927}, {"d": "2026-04-14", "s": 312.27, "r": 7, "m": 7, "p": 0, "v": 0.0, "c": 393, "i": 26097}, {"d": "2026-04-15", "s": 356.55, "r": 27, "m": 27, "p": 0, "v": 0.0, "c": 421, "i": 28323}, {"d": "2026-04-16", "s": 267.2, "r": 12, "m": 12, "p": 0, "v": 0.0, "c": 374, "i": 22653}, {"d": "2026-04-17", "s": 207.19, "r": 11, "m": 11, "p": 0, "v": 0.0, "c": 346, "i": 20422}, {"d": "2026-04-18", "s": 158.57, "r": 13, "m": 13, "p": 0, "v": 0.0, "c": 252, "i": 15494}, {"d": "2026-04-19", "s": 0.0, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 0, "i": 3}, {"d": "2026-04-20", "s": 0.0, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 0, "i": 0}, {"d": "2026-04-21", "s": 0.0, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 0, "i": 0}, {"d": "2026-04-23", "s": 0.0, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 0, "i": 0}, {"d": "2026-05-01", "s": 327.87, "r": 17, "m": 17, "p": 0, "v": 0.0, "c": 360, "i": 28827}, {"d": "2026-05-02", "s": 313.47, "r": 21, "m": 21, "p": 0, "v": 0.0, "c": 408, "i": 33106}, {"d": "2026-05-03", "s": 198.46, "r": 7, "m": 7, "p": 0, "v": 0.0, "c": 335, "i": 22976}, {"d": "2026-05-04", "s": 142.84, "r": 11, "m": 11, "p": 0, "v": 0.0, "c": 397, "i": 22335}, {"d": "2026-05-05", "s": 170.69, "r": 11, "m": 11, "p": 0, "v": 0.0, "c": 270, "i": 18044}, {"d": "2026-05-06", "s": 152.75, "r": 19, "m": 19, "p": 0, "v": 0.0, "c": 331, "i": 17195}, {"d": "2026-05-07", "s": 106.21, "r": 10, "m": 10, "p": 0, "v": 0.0, "c": 164, "i": 9675}, {"d": "2026-05-08", "s": 87.2, "r": 9, "m": 9, "p": 0, "v": 0.0, "c": 82, "i": 7027}, {"d": "2026-05-09", "s": 79.86, "r": 7, "m": 7, "p": 0, "v": 0.0, "c": 79, "i": 6612}, {"d": "2026-05-10", "s": 64.62, "r": 6, "m": 6, "p": 0, "v": 0.0, "c": 98, "i": 6217}, {"d": "2026-05-11", "s": 73.74, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 87, "i": 7091}, {"d": "2026-05-12", "s": 111.43, "r": 12, "m": 12, "p": 0, "v": 0.0, "c": 108, "i": 7902}, {"d": "2026-05-13", "s": 108.15, "r": 15, "m": 15, "p": 0, "v": 0.0, "c": 110, "i": 7751}, {"d": "2026-05-14", "s": 73.5, "r": 7, "m": 7, "p": 0, "v": 0.0, "c": 93, "i": 6782}, {"d": "2026-05-15", "s": 59.06, "r": 8, "m": 8, "p": 0, "v": 0.0, "c": 72, "i": 5211}, {"d": "2026-05-16", "s": 41.76, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 50, "i": 4047}, {"d": "2026-05-17", "s": 41.12, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 69, "i": 4809}, {"d": "2026-05-18", "s": 57.51, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 76, "i": 8202}, {"d": "2026-05-19", "s": 75.48, "r": 8, "m": 8, "p": 0, "v": 0.0, "c": 113, "i": 5816}, {"d": "2026-05-20", "s": 61.95, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 93, "i": 5014}, {"d": "2026-05-21", "s": 40.31, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 46, "i": 3080}, {"d": "2026-05-22", "s": 33.02, "r": 5, "m": 5, "p": 0, "v": 0.0, "c": 77, "i": 3598}, {"d": "2026-05-23", "s": 41.93, "r": 5, "m": 5, "p": 0, "v": 0.0, "c": 103, "i": 5512}, {"d": "2026-05-24", "s": 42.46, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 99, "i": 6011}, {"d": "2026-05-25", "s": 28.56, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 54, "i": 4345}, {"d": "2026-05-26", "s": 36.27, "r": 6, "m": 6, "p": 0, "v": 0.0, "c": 23, "i": 3410}, {"d": "2026-05-27", "s": 40.06, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 33, "i": 3382}, {"d": "2026-05-28", "s": 33.98, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 16, "i": 2572}, {"d": "2026-05-29", "s": 41.96, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 27, "i": 3267}, {"d": "2026-05-30", "s": 34.89, "r": 3, "m": 3, "p": 0, "v": 0.0, "c": 33, "i": 3199}, {"d": "2026-05-31", "s": 29.44, "r": 0, "m": 0, "p": 0, "v": 0.0, "c": 36, "i": 3407}, {"d": "2026-06-01", "s": 38.27, "r": 3, "m": 3, "p": 0, "v": 0.0, "c": 21, "i": 3537}, {"d": "2026-06-02", "s": 55.22, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 22, "i": 3639}, {"d": "2026-06-03", "s": 54.29, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 40, "i": 3922}, {"d": "2026-06-04", "s": 53.48, "r": 7, "m": 7, "p": 0, "v": 0.0, "c": 52, "i": 4513}, {"d": "2026-06-05", "s": 42.22, "r": 3, "m": 3, "p": 0, "v": 0.0, "c": 27, "i": 3484}, {"d": "2026-06-06", "s": 55.19, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 29, "i": 4227}, {"d": "2026-06-07", "s": 54.46, "r": 7, "m": 7, "p": 0, "v": 0.0, "c": 46, "i": 4215}, {"d": "2026-06-08", "s": 45.57, "r": 5, "m": 5, "p": 0, "v": 0.0, "c": 35, "i": 3531}, {"d": "2026-06-09", "s": 63.98, "r": 6, "m": 6, "p": 0, "v": 0.0, "c": 44, "i": 4882}, {"d": "2026-06-10", "s": 50.24, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 33, "i": 4053}, {"d": "2026-06-11", "s": 35.47, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 42, "i": 2950}, {"d": "2026-06-12", "s": 28.27, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 28, "i": 2753}, {"d": "2026-06-13", "s": 25.29, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 19, "i": 2492}, {"d": "2026-06-14", "s": 29.85, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 24, "i": 3042}, {"d": "2026-06-15", "s": 31.31, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 19, "i": 2967}, {"d": "2026-06-16", "s": 37.02, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 30, "i": 3031}, {"d": "2026-06-17", "s": 41.25, "r": 2, "m": 2, "p": 0, "v": 0.0, "c": 22, "i": 2808}, {"d": "2026-06-18", "s": 46.29, "r": 3, "m": 3, "p": 0, "v": 0.0, "c": 37, "i": 3442}, {"d": "2026-06-19", "s": 45.84, "r": 1, "m": 1, "p": 0, "v": 0.0, "c": 37, "i": 3272}, {"d": "2026-06-20", "s": 50.59, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 42, "i": 3832}, {"d": "2026-06-21", "s": 52.08, "r": 8, "m": 8, "p": 0, "v": 0.0, "c": 48, "i": 3538}, {"d": "2026-06-22", "s": 51.2, "r": 5, "m": 5, "p": 0, "v": 0.0, "c": 36, "i": 3491}, {"d": "2026-06-23", "s": 72.82, "r": 7, "m": 7, "p": 0, "v": 0.0, "c": 44, "i": 5510}, {"d": "2026-06-24", "s": 78.2, "r": 9, "m": 9, "p": 0, "v": 0.0, "c": 47, "i": 5463}, {"d": "2026-06-25", "s": 68.17, "r": 3, "m": 3, "p": 0, "v": 0.0, "c": 37, "i": 4679}, {"d": "2026-06-26", "s": 75.82, "r": 6, "m": 6, "p": 0, "v": 0.0, "c": 46, "i": 4460}, {"d": "2026-06-27", "s": 96.12, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 40, "i": 6222}, {"d": "2026-06-28", "s": 91.37, "r": 9, "m": 9, "p": 0, "v": 0.0, "c": 43, "i": 5406}, {"d": "2026-06-29", "s": 90.6, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 41, "i": 5578}, {"d": "2026-06-30", "s": 132.52, "r": 9, "m": 9, "p": 0, "v": 0.0, "c": 71, "i": 8161}, {"d": "2026-07-01", "s": 144.06, "r": 6, "m": 6, "p": 0, "v": 0.0, "c": 60, "i": 8928}, {"d": "2026-07-02", "s": 135.15, "r": 11, "m": 11, "p": 0, "v": 0.0, "c": 73, "i": 7431}, {"d": "2026-07-03", "s": 114.7, "r": 12, "m": 12, "p": 0, "v": 0.0, "c": 63, "i": 5682}, {"d": "2026-07-04", "s": 113.21, "r": 5, "m": 5, "p": 0, "v": 0.0, "c": 70, "i": 6240}, {"d": "2026-07-05", "s": 100.22, "r": 5, "m": 5, "p": 0, "v": 0.0, "c": 43, "i": 6558}, {"d": "2026-07-06", "s": 152.52, "r": 11, "m": 11, "p": 0, "v": 0.0, "c": 65, "i": 7946}, {"d": "2026-07-07", "s": 182.99, "r": 11, "m": 11, "p": 0, "v": 0.0, "c": 83, "i": 9285}, {"d": "2026-07-08", "s": 145.05, "r": 9, "m": 9, "p": 0, "v": 0.0, "c": 82, "i": 7467}, {"d": "2026-07-09", "s": 104.94, "r": 10, "m": 10, "p": 0, "v": 0.0, "c": 65, "i": 6217}, {"d": "2026-07-10", "s": 97.16, "r": 10, "m": 10, "p": 0, "v": 0.0, "c": 63, "i": 6490}, {"d": "2026-07-11", "s": 90.73, "r": 7, "m": 7, "p": 0, "v": 0.0, "c": 68, "i": 6162}, {"d": "2026-07-12", "s": 103.1, "r": 4, "m": 4, "p": 0, "v": 0.0, "c": 62, "i": 7440}, {"d": "2026-07-13", "s": 177.4, "r": 10, "m": 10, "p": 0, "v": 0.0, "c": 76, "i": 7499}, {"d": "2026-07-14", "s": 199.42, "r": 11, "m": 11, "p": 0, "v": 0.0, "c": 88, "i": 11498}, {"d": "2026-07-15", "s": 145.51, "r": 11, "m": 11, "p": 0, "v": 0.0, "c": 66, "i": 8736}, {"d": "2026-07-16", "s": 140.79, "r": 9, "m": 9, "p": 0, "v": 0.0, "c": 67, "i": 8462}, {"d": "2026-07-17", "s": 137.53, "r": 13, "m": 13, "p": 0, "v": 0.0, "c": 80, "i": 9655}, {"d": "2026-07-18", "s": 128.68, "r": 10, "m": 10, "p": 0, "v": 0.0, "c": 72, "i": 9263}, {"d": "2026-07-19", "s": 114.24, "r": 9, "m": 9, "p": 0, "v": 0.0, "c": 54, "i": 9330}, {"d": "2026-07-20", "s": 140.85, "r": 8, "m": 8, "p": 0, "v": 0.0, "c": 64, "i": 9104}, {"d": "2026-07-21", "s": 190.6, "r": 16, "m": 16, "p": 0, "v": 0.0, "c": 85, "i": 8224}, {"d": "2026-07-22", "s": 156.21, "r": 12, "m": 12, "p": 0, "v": 0.0, "c": 70, "i": 7908}, {"d": "2026-07-23", "s": 239.61, "r": 34, "m": 34, "p": 0, "v": 0.0, "c": 187, "i": 9317}, {"d": "2026-07-24", "s": 102.33, "r": 14, "m": 14, "p": 0, "v": 0.0, "c": 72, "i": 3160}];
+  const HAS_ROAS = false;
+  const RESULT_LABEL = "Mensagens Iniciadas";
+  new Chart(document.getElementById('chartDistDonut'),{type:'doughnut',data:{
+    labels:["[12][MSG ADV+][EASYLIPO][23.07.2", "[14][MSG ADV+][LIPOLIFTING][23.0", "[24][MSG][FUNIL][LIPOLIFTING][23", "[13][FUNIL][EASYLIPO]23.07.2026]", "[07][MSG][ADV+][Contorno Corpora", "[06][VIDEO VIEW][Atrair audiênia", "[04][MSG][ADV+][MAMAS][04][18.02", "[FUNIL] [02]"],
+    datasets:[{data:[6, 1, 5, 9, 18, 0, 246, 3],backgroundColor:['#F5A623','#3b82f6','#22c55e','#a855f7','#ef4444','#06b6d4','#f97316'],borderWidth:0,hoverOffset:6}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{color:'#888',font:{size:10},padding:10,boxWidth:8,boxHeight:8}}}}});
+  // ════ MOTOR DE PERÍODOS ════
+  const fmtBRL = v => v >= 1000 ? 'R$ ' + Math.round(v).toLocaleString('pt-BR') : 'R$ ' + v.toFixed(2).replace('.', ',');
+  const fmtNum = v => Math.round(v).toLocaleString('pt-BR');
+  const fmtPct = v => v.toFixed(2).replace('.', ',') + '%';
+  const fmtX   = v => v.toFixed(2).replace('.', ',') + '×';
+  const dstr   = d => d.toISOString().slice(0, 10);
+
+  function sumRange(from, to) {
+    const acc = { s: 0, r: 0, m: 0, p: 0, v: 0, c: 0, i: 0 };
+    for (const row of DM) {
+      if (row.d >= from && row.d <= to) {
+        acc.s += row.s; acc.r += row.r; acc.m += row.m;
+        acc.p += row.p; acc.v += row.v; acc.c += row.c; acc.i += row.i;
+      }
+    }
+    return acc;
+  }
+
+  function setText(id, txt) { const el = document.getElementById(id); if (el) el.textContent = txt; }
+
+  function setDelta(id, cur, prev, invert) {
+    const el = document.getElementById(id + '-d');
+    if (!el) return;
+    if (!prev) { el.textContent = 'sem base de comparação'; el.className = 'kcard-delta neutral'; return; }
+    const pct = (cur - prev) / prev * 100;
+    if (Math.abs(pct) < 0.5) { el.textContent = 'estável vs período anterior'; el.className = 'kcard-delta neutral'; return; }
+    const good = invert ? pct < 0 : pct > 0;
+    const arrow = pct > 0 ? '↑' : '↓';
+    const goodWord = good ? 'melhorou' : 'piorou';
+    el.textContent = arrow + ' ' + Math.abs(pct).toFixed(0) + '% vs anterior — ' + goodWord;
+    el.className = 'kcard-delta ' + (good ? 'up' : 'down');
+  }
+
+  let chMetaDaily = null, chMetaMix = null, chCompare = null;
+
+  function applyRange(from, to, label) {
+    const cur = sumRange(from, to);
+    const days = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
+    const pTo = new Date(new Date(from) - 86400000);
+    const pFrom = new Date(pTo - (days - 1) * 86400000);
+    const prev = sumRange(dstr(pFrom), dstr(pTo));
+
+    setText('mSpend', fmtBRL(cur.s));            setDelta('mSpend', cur.s, prev.s, false);
+    setText('mResults', fmtNum(cur.r));          setDelta('mResults', cur.r, prev.r, false);
+    const cpl = cur.r ? cur.s / cur.r : 0, pcpl = prev.r ? prev.s / prev.r : 0;
+    setText('mCpl', fmtBRL(cpl));                setDelta('mCpl', cpl, pcpl, true);
+    if (HAS_ROAS) {
+      setText('mRev', fmtBRL(cur.v));            setDelta('mRev', cur.v, prev.v, false);
+      const roas = cur.s ? cur.v / cur.s : 0, proas = prev.s ? prev.v / prev.s : 0;
+      setText('mRoas', fmtX(roas));              setDelta('mRoas', roas, proas, false);
+    } else {
+      setText('mMsgs', fmtNum(cur.m));           setDelta('mMsgs', cur.m, prev.m, false);
+      const cm = cur.m ? cur.s / cur.m : 0, pcm = prev.m ? prev.s / prev.m : 0;
+      setText('mCostMsg', fmtBRL(cm));           setDelta('mCostMsg', cm, pcm, true);
+    }
+    setText('mImp', fmtNum(cur.i));              setDelta('mImp', cur.i, prev.i, false);
+    const cpm = cur.i ? cur.s / cur.i * 1000 : 0, pcpm = prev.i ? prev.s / prev.i * 1000 : 0;
+    setText('mCpm', fmtBRL(cpm));                setDelta('mCpm', cpm, pcpm, true);
+    setText('mClicks', fmtNum(cur.c));           setDelta('mClicks', cur.c, prev.c, false);
+    const ctr = cur.i ? cur.c / cur.i * 100 : 0, pctr = prev.i ? prev.c / prev.i * 100 : 0;
+    setText('mCtr', fmtPct(ctr));                setDelta('mCtr', ctr, pctr, false);
+    const cpc = cur.c ? cur.s / cur.c : 0, pcpc = prev.c ? prev.s / prev.c : 0;
+    setText('mCpc', fmtBRL(cpc));                setDelta('mCpc', cpc, pcpc, true);
+    setText('periodTag', '· ' + label);
+
+    // Gráfico de evolução
+    const rows = DM.filter(x => x.d >= from && x.d <= to);
+    const labels = rows.map(x => x.d.slice(8) + '/' + x.d.slice(5, 7));
+    if (chMetaDaily) {
+      chMetaDaily.data.labels = labels;
+      chMetaDaily.data.datasets[0].data = rows.map(x => x.s);
+      chMetaDaily.data.datasets[1].data = rows.map(x => x.r);
+      chMetaDaily.update();
+    }
+    if (chMetaMix) {
+      chMetaMix.data.datasets[0].data = [cur.r, Math.max(0, cur.c - cur.r)];
+      chMetaMix.update();
+    }
+    // Comparativo padrão: atual vs anterior
+    updateCompare(cur, prev, label, 'período anterior equivalente');
+  }
+
+  function updateCompare(a, b, labelA, labelB) {
+    if (!chCompare) return;
+    chCompare.data.datasets[0].data = [Math.round(a.s * 100) / 100, a.r];
+    chCompare.data.datasets[1].data = [Math.round(b.s * 100) / 100, b.r];
+    chCompare.update();
+    const cplA = a.r ? a.s / a.r : 0, cplB = b.r ? b.s / b.r : 0;
+    const diff = b.r ? ((a.r - b.r) / b.r * 100).toFixed(0) : '—';
+    document.getElementById('cmpSummary').innerHTML =
+      '<b style="color:var(--gold)">' + labelA + ':</b> ' + fmtBRL(a.s) + ' · ' + fmtNum(a.r) + ' ' + RESULT_LABEL.toLowerCase() +
+      ' (custo ' + fmtBRL(cplA) + ') &nbsp;•&nbsp; <b style="color:#888">' + labelB + ':</b> ' + fmtBRL(b.s) + ' · ' +
+      fmtNum(b.r) + ' (custo ' + fmtBRL(cplB) + ') &nbsp;•&nbsp; variação de resultados: <b>' + diff + '%</b>';
+  }
+
+  function applyCompare() {
+    const af = document.getElementById('cmpAFrom').value, at = document.getElementById('cmpATo').value;
+    const bf = document.getElementById('cmpBFrom').value, bt = document.getElementById('cmpBTo').value;
+    if (!(af && at && bf && bt)) return;
+    updateCompare(sumRange(af, at), sumRange(bf, bt),
+                  'Período A (' + af.slice(8) + '/' + af.slice(5,7) + '–' + at.slice(8) + '/' + at.slice(5,7) + ')',
+                  'Período B (' + bf.slice(8) + '/' + bf.slice(5,7) + '–' + bt.slice(8) + '/' + bt.slice(5,7) + ')');
+  }
+
+  function setPeriod(btn, key) {
+    document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrap').classList.remove('show');
+    const today = new Date();
+    let from, to = dstr(today), label;
+    if (key === '1d')      { from = to; label = 'hoje'; }
+    else if (key === '7d') { from = dstr(new Date(today - 6 * 86400000)); label = 'últimos 7 dias'; }
+    else if (key === '30d'){ from = dstr(new Date(today - 29 * 86400000)); label = 'últimos 30 dias'; }
+    else if (key === '90d'){ from = dstr(new Date(today - 89 * 86400000)); label = 'últimos 3 meses'; }
+    else if (key === '180d'){ from = dstr(new Date(today - 179 * 86400000)); label = 'últimos 6 meses'; }
+    else if (key === 'month') { from = to.slice(0, 8) + '01'; label = 'mês atual'; }
+    else if (key === 'lmonth') {
+      const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      from = dstr(d);
+      to = dstr(new Date(today.getFullYear(), today.getMonth(), 0));
+      label = 'mês passado';
+    }
+    applyRange(from, to, label);
+  }
+
+  function toggleCustom(btn) {
+    document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrap').classList.toggle('show');
+  }
+
+  function applyCustom() {
+    const f = document.getElementById('dateFrom').value, t = document.getElementById('dateTo').value;
+    if (f && t) applyRange(f, t, f.slice(8) + '/' + f.slice(5,7) + ' a ' + t.slice(8) + '/' + t.slice(5,7));
+  }
+
+  // ── Inicialização dos gráficos Meta ──
+  chMetaDaily = new Chart(document.getElementById('chartMetaDaily'), { type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Investimento', data: [], borderColor: '#F5A623', backgroundColor: 'rgba(245,166,35,.07)', tension: .4, fill: true, pointRadius: 2, yAxisID: 'y' },
+      { label: RESULT_LABEL, data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,.07)', tension: .4, fill: true, pointRadius: 2, yAxisID: 'y1' }]},
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#555', font: { size: 10 }, maxTicksLimit: 15 } },
+        y: { position: 'left', grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#F5A623', font: { size: 10 }, callback: v => 'R$' + v } },
+        y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#22c55e', font: { size: 10 } } } } } });
+
+  chMetaMix = new Chart(document.getElementById('chartMetaMix'), { type: 'doughnut',
+    data: { labels: [RESULT_LABEL, 'Cliques s/ conversão'],
+      datasets: [{ data: [0, 0], backgroundColor: ['#22c55e', '#2a2a2a'], borderWidth: 0, hoverOffset: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '68%',
+      plugins: { legend: { position: 'bottom', labels: { color: '#666', font: { size: 10 }, padding: 12, boxWidth: 8, boxHeight: 8 } } } } });
+
+  chCompare = new Chart(document.getElementById('chartCompare'), { type: 'bar',
+    data: { labels: ['Investimento (R$)', RESULT_LABEL],
+      datasets: [
+        { label: 'A', data: [0, 0], backgroundColor: '#F5A623', borderRadius: 6, barPercentage: .6 },
+        { label: 'B', data: [0, 0], backgroundColor: '#444', borderRadius: 6, barPercentage: .6 }]},
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#666', font: { size: 10 } } },
+        y: { grid: { display: false }, ticks: { color: '#888', font: { size: 11, weight: '600' } } } } } });
+
+  // Estado inicial: últimos 30 dias
+  const _t = new Date();
+  applyRange(dstr(new Date(_t - 29 * 86400000)), dstr(_t), 'últimos 30 dias');
+
+</script>
+</body>
+</html>
