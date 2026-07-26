@@ -19,6 +19,14 @@
       "ativo": true
     }
   ],
+  "realocacoes": [
+    {
+      "origem_slug": "tiago",
+      "destino_slug": "clay",
+      "sufixo": "- contingência",
+      "ativo": true
+    }
+  ],
   "limites": {
     "variacao_cpl_alerta_pct": 40,
     "variacao_gasto_alerta_pct": 50,
