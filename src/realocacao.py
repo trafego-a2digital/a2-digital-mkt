@@ -4,9 +4,9 @@ realocacao.py — Realocação de campanhas de contingência entre contas.
 Cenário que isso resolve:
     O orçamento de um cliente acaba no meio da semana e as campanhas são
     recriadas dentro da conta de outro cliente para não parar a entrega.
-    No relatório, esses dados precisam voltar para o cliente de origem,
-    somados às campanhas originais, e desaparecer do relatório da conta
-    que só emprestou o orçamento.
+    No relatório, esses dados voltam para o cliente de origem, somados às
+    campanhas originais, e desaparecem do relatório da conta que só
+    emprestou o orçamento.
 
 Duas convenções obrigatórias no nome da campanha de contingência:
     1. Manter o mesmo código inicial entre colchetes da campanha original.
@@ -65,45 +65,61 @@ def codigo(nome):
     return m.group(1) if m else None
 
 
-def realocacao_de_origem(cfg, slug_origem):
-    """Regra ativa em que a conta informada é a que emprestou o orçamento."""
+# -------------------------------------------------------------------- config
+
+def realocacao_de_origem(cfg, slug):
+    """Regra ativa em que essa conta é a que emprestou o orçamento."""
     for r in cfg.get("realocacoes", []):
-        if r.get("ativo", True) and r.get("origem_slug") == slug_origem:
+        if r.get("ativo", True) and r.get("origem_slug") == slug:
             return r
     return None
 
 
-def realocacao_de_destino(cfg, slug_destino):
-    """Regra ativa em que a conta informada é a dona real das campanhas."""
+def realocacao_de_destino(cfg, slug):
+    """Regra ativa em que essa conta é a dona real das campanhas."""
     for r in cfg.get("realocacoes", []):
-        if r.get("ativo", True) and r.get("destino_slug") == slug_destino:
+        if r.get("ativo", True) and r.get("destino_slug") == slug:
             return r
     return None
 
 
 def conta_por_slug(cfg, slug):
     for c in cfg.get("contas", []):
-        if c.get("slug") == slug:
+        if c.get("slug", c["nome"].lower().split()[-1]) == slug:
             return c
     return None
 
 
-# ------------------------------------------------------------------- separação
+# ------------------------------------------------------------------ separação
 
-def separar_contingencia(itens, sufixo=SUFIXO_PADRAO, campo="nome"):
-    """
-    Divide em (proprias, contingencia) pelo sufixo no campo informado.
-
-    Uso na conta de origem (Tiago), nível campanha:
-        proprias, _ = separar_contingencia(campanhas)
-    Uso no nível anúncio, olhando o nome da campanha do anúncio:
-        proprios, _ = separar_contingencia(anuncios, campo="campanha")
-    """
+def separar_contingencia(campanhas, sufixo=SUFIXO_PADRAO, campo="nome"):
+    """Divide em (proprias, contingencia) pelo sufixo no nome."""
     proprias, cont = [], []
-    for i in itens:
-        destino = cont if eh_contingencia(i.get(campo, ""), sufixo) else proprias
-        destino.append(i)
+    for c in campanhas:
+        (cont if eh_contingencia(c.get(campo, ""), sufixo) else proprias).append(c)
     return proprias, cont
+
+
+def mapear_ids(campanhas_destino, campanhas_contingencia, campo_id="id"):
+    """
+    De/para dos IDs de campanha, usado para reagrupar os criativos.
+
+    Campanha de contingência com par na conta de destino aponta para o ID da
+    campanha original. Sem par, aponta para o próprio ID, porque ela vai
+    entrar no relatório como linha própria.
+    """
+    por_codigo = {}
+    for c in campanhas_destino:
+        cod = codigo(c.get("nome", ""))
+        if cod and cod not in por_codigo:
+            por_codigo[cod] = c.get(campo_id)
+
+    mapa = {}
+    for cont in campanhas_contingencia:
+        cid = cont.get(campo_id)
+        cod = codigo(cont.get("nome", ""))
+        mapa[cid] = por_codigo.get(cod, cid)
+    return mapa
 
 
 # ----------------------------------------------------------------------- soma
@@ -116,19 +132,19 @@ def _somar(destino, origem, chaves=CHAVES_SOMA):
 
     gasto = destino.get("gasto") or 0
     res = destino.get("resultados") or 0
-    if "cpr" in destino or "cpr" in origem:
-        destino["cpr"] = (gasto / res) if res else None
-
     imp = destino.get("impressoes") or 0
-    if "ctr" in destino or "ctr" in origem:
-        destino["ctr"] = ((destino.get("cliques") or 0) / imp * 100) if imp else None
-    if "cpm" in destino or "cpm" in origem:
-        destino["cpm"] = (gasto / imp * 1000) if imp else None
 
-    # Frequência não é somável nem reconstruível sem alcance real da soma.
-    if "frequencia" in destino and "alcance" in destino and imp:
+    if "gasto" in destino:
+        destino["gasto"] = round(gasto, 2)
+    if "cpr" in destino or "cpr" in origem:
+        destino["cpr"] = round(gasto / res, 2) if res else None
+    if "ctr" in destino or "ctr" in origem:
+        destino["ctr"] = ((destino.get("cliques") or 0) / imp * 100) if imp else 0.0
+    if "cpm" in destino or "cpm" in origem:
+        destino["cpm"] = round(gasto / imp * 1000, 2) if imp else None
+    if "frequencia" in destino:
         alc = destino.get("alcance") or 0
-        destino["frequencia"] = (imp / alc) if alc else None
+        destino["frequencia"] = round(imp / alc, 2) if alc else None
 
     return destino
 
@@ -138,19 +154,17 @@ def mesclar_campanhas(campanhas_destino, campanhas_contingencia,
     """
     Soma cada campanha de contingência na campanha de mesmo código na conta
     de destino. Sem par, entra como linha nova já com o sufixo removido.
-
-    Devolve a lista pronta para a montagem do HTML e do JSON.
     """
-    indice = {}
+    por_codigo = {}
     for c in campanhas_destino:
         cod = codigo(c.get("nome", ""))
-        if cod and cod not in indice:
-            indice[cod] = c
+        if cod and cod not in por_codigo:
+            por_codigo[cod] = c
 
     orfas = []
     for cont in campanhas_contingencia:
         cod = codigo(cont.get("nome", ""))
-        alvo = indice.get(cod) if cod else None
+        alvo = por_codigo.get(cod) if cod else None
         if alvo is not None:
             _somar(alvo, cont, chaves_soma)
             alvo.setdefault("_realocado_de", []).append(cont.get("nome"))
@@ -163,40 +177,34 @@ def mesclar_campanhas(campanhas_destino, campanhas_contingencia,
     return campanhas_destino + orfas
 
 
-def mesclar_anuncios(anuncios_destino, anuncios_contingencia,
-                     sufixo=SUFIXO_PADRAO, chaves_soma=CHAVES_SOMA,
-                     campo_campanha="campanha", campo_nome="nome"):
+def realocar_criativos(criativos_destino, criativos_contingencia, mapa_ids,
+                       campo_id="campaign_id", campo_nome="nome",
+                       chaves_soma=CHAVES_SOMA):
     """
-    Mesma lógica no nível anúncio, para o top 3 de criativos sair correto.
+    Reagrupa os criativos da contingência sob o ID da campanha de destino.
 
-    O pareamento é pelo par (código da campanha, nome do criativo). Criativo
-    que só rodou na contingência entra como linha nova, com o nome da campanha
-    já ajustado pelo código correspondente na conta de destino.
+    Criativo com o mesmo nome na mesma campanha é somado ao já existente,
+    mantendo o ad_id da conta de destino para a prévia apontar certo.
+    Criativo que só rodou na contingência entra como item novo.
+
+    Recebe as listas ainda brutas, antes do corte de top 3.
     """
-    nome_por_codigo = {}
-    for a in anuncios_destino:
-        cod = codigo(a.get(campo_campanha, ""))
-        if cod and cod not in nome_por_codigo:
-            nome_por_codigo[cod] = a.get(campo_campanha)
-
     indice = {}
-    for a in anuncios_destino:
-        chave = (codigo(a.get(campo_campanha, "")), _norm(a.get(campo_nome)))
-        indice.setdefault(chave, a)
+    for a in criativos_destino:
+        indice.setdefault((a.get(campo_id), _norm(a.get(campo_nome))), a)
 
     novos = []
-    for cont in anuncios_contingencia:
-        cod = codigo(cont.get(campo_campanha, ""))
-        chave = (cod, _norm(cont.get(campo_nome)))
+    for cont in criativos_contingencia:
+        item = dict(cont)
+        item[campo_id] = mapa_ids.get(cont.get(campo_id), cont.get(campo_id))
+        chave = (item[campo_id], _norm(item.get(campo_nome)))
         alvo = indice.get(chave)
         if alvo is not None:
-            _somar(alvo, cont, chaves_soma)
-            alvo.setdefault("_realocado_de", []).append(cont.get(campo_nome))
+            _somar(alvo, item, chaves_soma)
+            alvo.setdefault("_realocado_de", []).append(cont.get("ad_id"))
         else:
-            novo = dict(cont)
-            novo[campo_campanha] = nome_por_codigo.get(
-                cod, limpar_sufixo(novo.get(campo_campanha, ""), sufixo))
-            novo["_realocado_de"] = [cont.get(campo_nome)]
-            novos.append(novo)
+            item["_realocado"] = True
+            novos.append(item)
+            indice[chave] = item
 
-    return anuncios_destino + novos
+    return criativos_destino + novos
