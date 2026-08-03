@@ -982,11 +982,98 @@ def build_camp_blocks(campaigns, result_label, result_event, ads_key="_ads"):
     return blocks or '<p style="color:var(--muted)">Nenhuma campanha com investimento no período.</p>'
 
 
+def compute_service_investment(account, meta, period="30d"):
+    """Agrupa investimento e resultados por serviço, buscando o nome do
+    serviço no nome da campanha ou do criativo, conforme configurado."""
+    services = account.get("services", [])
+    source = account.get("service_source", "campaign_name")
+    result_event = account.get("result_event", "lead")
+    data = {s: {"spend": 0.0, "res": 0} for s in services}
+    outros = {"spend": 0.0, "res": 0}
+
+    if source == "campaign_name":
+        for camp in meta["campaigns"]:
+            name = camp.get("name", "")
+            if period == "30d":
+                ins = (camp.get("insights") or {}).get("data", [{}])[0]
+            else:
+                ins = (camp.get("insights_90d") or {}).get("data", [{}])[0]
+            spend = float(ins.get("spend", 0))
+            if spend <= 0:
+                continue
+            res = extract_action(ins.get("actions", []), result_event)
+            matched = False
+            for s in services:
+                if s.lower() in name.lower():
+                    data[s]["spend"] += spend
+                    data[s]["res"] += res
+                    matched = True
+            if not matched:
+                outros["spend"] += spend
+                outros["res"] += res
+    else:  # creative_name
+        ads_key = "_ads" if period == "30d" else "_ads_90d"
+        for camp in meta["campaigns"]:
+            for ad in camp.get(ads_key, []):
+                name = ad.get("name", "")
+                ai = (ad.get("insights") or {}).get("data", [{}])[0]
+                spend = float(ai.get("spend", 0))
+                if spend <= 0:
+                    continue
+                res = extract_action(ai.get("actions", []), result_event)
+                matched = False
+                for s in services:
+                    if s.lower() in name.lower():
+                        data[s]["spend"] += spend
+                        data[s]["res"] += res
+                        matched = True
+                if not matched:
+                    outros["spend"] += spend
+                    outros["res"] += res
+
+    return data, outros
+
+
+def build_service_section(account, meta, period="30d"):
+    data, outros = compute_service_investment(account, meta, period)
+    result_label = account.get("result_label", "Resultados")
+    total_spend = sum(v["spend"] for v in data.values()) + outros["spend"]
+
+    cards = ""
+    for service, v in data.items():
+        pct = sdiv(v["spend"], total_spend) * 100 if total_spend else 0
+        cpl = sdiv(v["spend"], v["res"])
+        cards += f"""
+    <div class="kcard"><div class="kcard-accent"></div>
+      <div class="kcard-label">{service}</div>
+      <div class="kcard-value gold">{fmt_brl(v["spend"])}</div>
+      <span class="kcard-delta neutral">{fmt_num(v["res"])} {result_label.lower()} · {fmt_brl(cpl)} · {fmt_pct(pct)} do total</span>
+    </div>"""
+
+    if outros["spend"] > 0:
+        pct = sdiv(outros["spend"], total_spend) * 100 if total_spend else 0
+        cards += f"""
+    <div class="kcard" style="opacity:.7"><div class="kcard-accent"></div>
+      <div class="kcard-label">Outras / Não Identificado</div>
+      <div class="kcard-value">{fmt_brl(outros["spend"])}</div>
+      <span class="kcard-delta neutral">{fmt_num(outros["res"])} {result_label.lower()} · {fmt_pct(pct)} do total</span>
+    </div>"""
+
+    return f"""
+  <div class="sec-title"><h3>💉 Investimento por Serviço</h3><div class="sec-line"></div></div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">{cards}</div>
+"""
+
+
 def page_campanhas_meta(account, meta):
     result_label = account.get("result_label", "Resultados")
     result_event = account.get("result_event", "lead")
     blocks_30 = build_camp_blocks(meta["campaigns"], result_label, result_event, "_ads")
     blocks_90 = build_camp_blocks(meta["campaigns"], result_label, result_event, "_ads_90d")
+
+    has_services = bool(account.get("services"))
+    svc_30 = build_service_section(account, meta, "30d") if has_services else ""
+    svc_90 = build_service_section(account, meta, "90d") if has_services else ""
 
     return f"""
 <div id="page-campanhas" class="page">
@@ -998,6 +1085,8 @@ def page_campanhas_meta(account, meta):
       <button class="pbtn" onclick="switchCampPeriod(this,'90d')">Últimos 3 meses</button>
     </div>
   </div>
+  <div id="svcBlocks30">{svc_30}</div>
+  <div id="svcBlocks90" style="display:none">{svc_90}</div>
   <div id="campBlocks30">{blocks_30}</div>
   <div id="campBlocks90" style="display:none">{blocks_90}</div>
 </div>
@@ -1159,6 +1248,33 @@ def page_funil(account, meta, g):
 </div>"""
 
 
+def page_vendas_congresso(account, meta):
+    """Vendas diárias + análise semanal do mês, para contas de congresso/evento."""
+    return f"""
+<div id="page-vendas" class="page">
+<div class="page-inner">
+
+  <div class="sec-title"><h3>📈 Vendas Diárias — Últimos 30 dias</h3><div class="sec-line"></div></div>
+  <div class="chart-row" style="grid-template-columns:1fr">
+    <div class="chart-card">
+      <div class="chart-head">
+        <span class="chart-title">Oscilação de Vendas no Mês</span>
+        <div class="chart-legend">
+          <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div>Vendas</div>
+          <div class="leg-item"><div class="leg-dot" style="background:var(--gold)"></div>Receita (R$)</div>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="chartVendasDiarias"></canvas></div>
+    </div>
+  </div>
+
+  <div class="sec-title"><h3>📅 Análise Semanal do Mês</h3><div class="sec-line"></div></div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))" id="weeklyTable"></div>
+
+</div>
+</div>"""
+
+
 # ════════════════════════════════════════════════════════════════════
 # RENDER FINAL
 # ════════════════════════════════════════════════════════════════════
@@ -1188,6 +1304,8 @@ def render(account, meta, g):
         tabs.append(("campanhas", "Campanhas"))
         tabs.append(("criativos", "Criativos"))
         tabs.append(("distribuicao", "Distribuição"))
+    if has_meta and account.get("is_congresso"):
+        tabs.append(("vendas", "Vendas Diárias"))
     tabs.append(("funil", "Funil"))
 
     first_tab = tabs[0][0]
@@ -1210,6 +1328,9 @@ def render(account, meta, g):
         pages += page_criativos_meta(account, meta)
         dist_html, dist_labels, dist_values = page_distribuicao_meta(account, meta)
         pages += dist_html
+
+    if has_meta and account.get("is_congresso"):
+        pages += page_vendas_congresso(account, meta)
 
     pages += page_funil(account, meta if has_meta else None, g if has_goog else None)
 
@@ -1403,6 +1524,60 @@ def render(account, meta, g):
   applyRange(dstr(new Date(_t - 29 * 86400000)), dstr(_t), 'últimos 30 dias');
 """
 
+        if account.get("is_congresso"):
+            js += """
+  // ════ VENDAS DIÁRIAS + SEMANAL (contas de congresso) ════
+  function renderVendasCongresso() {
+    const rows = DM.slice(-30);
+    const labels = rows.map(r => r.d.slice(8) + '/' + r.d.slice(5,7));
+    const vendas = rows.map(r => r.p);
+    const receita = rows.map(r => r.v);
+
+    new Chart(document.getElementById('chartVendasDiarias'), {
+      type: 'bar',
+      data: { labels: labels, datasets: [
+        { type: 'bar', label: 'Vendas', data: vendas, backgroundColor: '#22c55e', yAxisID: 'y', order: 2 },
+        { type: 'line', label: 'Receita', data: receita, borderColor: '#F5A623', backgroundColor: 'rgba(245,166,35,.08)',
+          tension: .4, fill: true, pointRadius: 2, yAxisID: 'y1', order: 1 }
+      ]},
+      options: { responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#555', font: { size: 10 } } },
+          y: { position: 'left', grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#22c55e', font: { size: 10 } } },
+          y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#F5A623', font: { size: 10 }, callback: v => 'R$' + v } }
+        }
+      }
+    });
+
+    // Análise semanal (semanas do mês corrente: dias 1-7, 8-14, 15-21, 22-fim)
+    const byWeek = {};
+    rows.forEach(r => {
+      const day = parseInt(r.d.slice(8), 10);
+      const week = Math.min(4, Math.ceil(day / 7));
+      const key = 'Semana ' + week;
+      if (!byWeek[key]) byWeek[key] = { vendas: 0, receita: 0, invest: 0 };
+      byWeek[key].vendas += r.p;
+      byWeek[key].receita += r.v;
+      byWeek[key].invest += r.s;
+    });
+
+    let html = '';
+    Object.keys(byWeek).sort().forEach(k => {
+      const w = byWeek[k];
+      const roas = w.invest ? (w.receita / w.invest) : 0;
+      html += `<div class="kcard"><div class="kcard-accent"></div>
+        <div class="kcard-label">${k}</div>
+        <div class="kcard-value green">${fmtNum(w.vendas)}</div>
+        <span class="kcard-delta neutral">${fmtBRL(w.receita)} receita · ROAS ${fmtX(roas)}</span>
+      </div>`;
+    });
+    document.getElementById('weeklyTable').innerHTML = html;
+  }
+  renderVendasCongresso();
+"""
+
     if has_goog:
         gdc = g.get("daily_compact", [])
         gm = g["metrics"]
@@ -1572,6 +1747,9 @@ function switchCampPeriod(btn, p) {{
   btn.classList.add('active');
   document.getElementById('campBlocks30').style.display = p === '30d' ? '' : 'none';
   document.getElementById('campBlocks90').style.display = p === '90d' ? '' : 'none';
+  const s30 = document.getElementById('svcBlocks30'), s90 = document.getElementById('svcBlocks90');
+  if (s30) s30.style.display = p === '30d' ? '' : 'none';
+  if (s90) s90.style.display = p === '90d' ? '' : 'none';
 }}
 function switchCreatPeriod(btn, p) {{
   document.querySelectorAll('#page-criativos .pbtn').forEach(b => b.classList.remove('active'));
