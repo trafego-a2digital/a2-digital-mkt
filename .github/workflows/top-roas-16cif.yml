@@ -1,0 +1,24 @@
+name: Top ROAS 16CIF
+
+on:
+  workflow_dispatch:  # aparece um botão "Run workflow" na aba Actions do repo
+
+jobs:
+  buscar-top-roas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependências
+        run: pip install requests
+
+      - name: Rodar script de ROAS
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+        run: python src/top_roas_16cif.py
