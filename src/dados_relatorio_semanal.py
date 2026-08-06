@@ -34,7 +34,9 @@ from realocacao import (SUFIXO_PADRAO, separar_contingencia, mapear_ids,
                         conta_por_slug)
 
 FIELDS_AD = ["ad_id", "ad_name", "campaign_id", "campaign_name",
-             "spend", "impressions", "clicks", "ctr", "actions"]
+             "spend", "impressions", "clicks", "ctr", "actions",
+             "reach", "video_p25_watched_actions", "video_p50_watched_actions",
+             "video_p75_watched_actions", "video_p95_watched_actions"]
 
 
 def periodo_ultimos_7_dias():
@@ -49,6 +51,26 @@ def periodo_ultimos_7_dias():
 
 def slug_da_conta(conta):
     return conta.get("slug", conta["nome"].lower().split()[-1])
+
+
+def extrair_retencao_video(ln, alcance):
+    """Retorna % de quem assistiu até cada marco (25/50/75/95%) do vídeo,
+    calculado sobre o alcance do anúncio. None se não for vídeo (campos
+    ausentes na resposta da API) ou se o alcance for 0."""
+    if not alcance:
+        return None
+    campos = [(25, "video_p25_watched_actions"),
+              (50, "video_p50_watched_actions"),
+              (75, "video_p75_watched_actions"),
+              (95, "video_p95_watched_actions")]
+    if not any(ln.get(campo) for _, campo in campos):
+        return None
+    marcos = {}
+    for pct, campo in campos:
+        bruto = ln.get(campo)
+        valor = int(bruto[0]["value"]) if bruto else 0
+        marcos[pct] = round(100 * valor / alcance, 1)
+    return marcos
 
 
 def coletar_criativos(account_id, since, until):
@@ -70,6 +92,7 @@ def coletar_criativos(account_id, since, until):
     itens = []
     for ln in linhas:
         gasto = float(ln.get("spend", 0) or 0)
+        alcance = int(ln.get("reach", 0) or 0)
         item = {
             "ad_id": ln.get("ad_id"),
             "campaign_id": ln.get("campaign_id"),
@@ -80,6 +103,8 @@ def coletar_criativos(account_id, since, until):
             "cliques": int(ln.get("clicks", 0) or 0),
             "ctr": float(ln.get("ctr", 0) or 0),
             "resultados": extrair_resultados(ln),
+            "alcance": alcance,
+            "retencao_video": extrair_retencao_video(ln, alcance),
         }
         item["cpr"] = round(gasto / item["resultados"], 2) if item["resultados"] else None
         itens.append(item)
