@@ -74,6 +74,12 @@ color:var(--amarelo);padding:5px 10px;border-radius:6px;font-size:10px;
 text-decoration:none;font-weight:600;}
 .new-badge{background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.35);
 color:var(--verde);padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;margin-left:6px;}
+.ret{margin-top:8px;padding-top:8px;border-top:1px solid var(--borda);}
+.ret-row{display:flex;align-items:center;gap:6px;margin-bottom:3px;}
+.ret-lbl{color:var(--texto-sutil);font-size:9px;width:24px;flex-shrink:0;}
+.ret-track{flex:1;height:5px;background:#1a1a1a;border-radius:3px;overflow:hidden;}
+.ret-fill{height:100%;background:var(--amarelo);}
+.ret-val{color:var(--texto);font-size:9px;width:30px;text-align:right;flex-shrink:0;}
 .stbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:28px;}
 .stbl th{background:var(--amarelo);color:#000;padding:10px 12px;text-align:left;
 font-weight:700;font-size:11px;text-transform:uppercase;}
@@ -122,6 +128,22 @@ def _classe_cpr(cpr, cpr_medio):
     return "cpr-bom" if cpr <= cpr_medio else ("cpr-ruim" if cpr > cpr_medio * 1.5 else "")
 
 
+def _bloco_retencao(retencao):
+    """Desenha as 4 barrinhas de retenção de vídeo (25/50/75/95%),
+    calculadas sobre o alcance do anúncio. Se o criativo for imagem
+    (retencao=None, sem campos de vídeo na resposta da API), não
+    desenha nada."""
+    if not retencao:
+        return ""
+    linhas = "".join(
+        f'<div class="ret-row"><span class="ret-lbl">{p}%</span>'
+        f'<div class="ret-track"><div class="ret-fill" style="width:{retencao[p]}%"></div></div>'
+        f'<span class="ret-val">{retencao[p]:.0f}%</span></div>'
+        for p in (25, 50, 75, 95)
+    )
+    return f'<div class="ret">{linhas}</div>'
+
+
 def _bloco_criativos(criativos):
     cards = []
     for i, cr in enumerate(criativos[:3], 1):
@@ -131,10 +153,14 @@ def _bloco_criativos(criativos):
         res_lbl = (f'Resultados: <b>{cr["resultados"]}</b> · CPR: <b>{fmt_brl(cr["cpr"])}</b><br>'
                    if cr.get("resultados") else
                    f'Cliques: <b>{cr["cliques"]}</b> · CTR: <b>{cr["ctr"]:.2f}%</b><br>')
+        alcance_lbl = (f'Alcance: <b>{cr["alcance"]:,}</b><br>'.replace(",", ".")
+                       if cr.get("alcance") else "")
+        retencao = _bloco_retencao(cr.get("retencao_video"))
         cards.append(f"""<div class="creat">
 <div class="creat-top"><div class="creat-num">{i}</div>
 <div class="creat-nome">{cr["nome"]}{novo}</div></div>
-<div class="creat-stats">{res_lbl}Investido: <b>{fmt_brl(cr["gasto"])}</b></div>
+<div class="creat-stats">{alcance_lbl}{res_lbl}Investido: <b>{fmt_brl(cr["gasto"])}</b></div>
+{retencao}
 {link}</div>""")
     while len(cards) < 3:
         n = len(criativos)
