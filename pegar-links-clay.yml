@@ -1,0 +1,18 @@
+name: Pegar links Clay (execução única)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pegar-links:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Buscar permalinks
+        env:
+          META_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+        run: |
+          ids="18132368092528808 18059896424759144 17996958195005664 17857691202691963 18106019264113934 17856929040695351 17892202368298704 17995360154926215 18091485671123575 17894694342469097 17977481301030897 18091947662008588 18058772261065021 18151152496471015 18103302247947460 17911794564394263 18470388685097246 17884631091398160 18048853850526097"
+          for id in $ids; do
+            curl -s "https://graph.facebook.com/v21.0/$id?fields=permalink&access_token=$META_TOKEN"
+            echo
+          done
