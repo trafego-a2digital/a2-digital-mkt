@@ -2,7 +2,7 @@ name: Relatório Diário de Funil - Congressos
 
 on:
   schedule:
-    - cron: "0 9 * * *"  # 6h Brasília (UTC-3) = 9h UTC, todo dia
+    - cron: "0 6 * * *"  # 6h Brasília (UTC-3) = 9h UTC, todo dia
   workflow_dispatch: {}  # permite rodar manualmente pelo GitHub
 
 jobs:
