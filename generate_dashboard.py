@@ -119,6 +119,9 @@ def fetch_meta(account):
             "v": round(extract_action_value(avs_d, "purchase"), 2),
             "c": int(float(d.get("clicks", 0))),
             "i": int(float(d.get("impressions", 0))),
+            "lpv": extract_action(acts_d, "landing_page_view"),
+            "atc": extract_action(acts_d, "omni_add_to_cart"),
+            "ic": extract_action(acts_d, "omni_initiated_checkout"),
         })
 
     # Busca campanhas com insights 30d
@@ -497,7 +500,11 @@ def kcard(label, value, sub, color="", delta_cls="neutral", vid=""):
 
 
 def funnel_html(stages, conversions, platform, funnel_title, metrics_rows):
-    """stages: [(label, value, sub)], conversions: [(pct_label, desc)] entre etapas."""
+    """stages: [(label, value, sub)] ou [(label, value, sub, (val_id, sub_id))].
+    conversions: [(pct_label, desc)] ou [(pct_label, desc, conv_id)] entre etapas.
+    metrics_rows: [(etapa, [(val, lbl, cls)] ou [(val, lbl, cls, id)])].
+    IDs são opcionais — quando presentes, permitem que o JS atualize os valores
+    ao trocar o período, sem precisar redesenhar o HTML."""
     colors = [
         ("linear-gradient(135deg,#0ea5e9,#0284c7)", "polygon(8% 0%,92% 0%,96% 100%,4% 100%)", "100%"),
         ("linear-gradient(135deg,#7c3aed,#6d28d9)", "polygon(6% 0%,94% 0%,98% 100%,2% 100%)", "88%"),
@@ -510,23 +517,30 @@ def funnel_html(stages, conversions, platform, funnel_title, metrics_rows):
     plat_txt = "● Meta Ads" if platform == "meta" else "● Google Ads"
 
     body = ""
-    for i, (label, value, sub) in enumerate(stages):
+    for i, stage in enumerate(stages):
+        label, value, sub = stage[0], stage[1], stage[2]
+        val_id, sub_id = stage[3] if len(stage) > 3 and stage[3] else (None, None)
         bg, clip, width = colors[min(i, len(colors)-1)]
+        id_val_attr = f' id="{val_id}"' if val_id else ""
+        id_sub_attr = f' id="{sub_id}"' if sub_id else ""
         body += f"""
         <div class="funil-stage" style="width:{width}">
           <div class="funil-trapezio" style="background:{bg};clip-path:{clip}">
             <div class="funil-stage-label">{label}</div>
-            <div class="funil-stage-value">{value}</div>
-            <div class="funil-stage-sub">{sub}</div>
+            <div class="funil-stage-value"{id_val_attr}>{value}</div>
+            <div class="funil-stage-sub"{id_sub_attr}>{sub}</div>
           </div>
         </div>"""
         if i < len(conversions):
-            pct, desc = conversions[i]
+            conv = conversions[i]
+            pct, desc = conv[0], conv[1]
+            conv_id = conv[2] if len(conv) > 2 else None
+            id_conv_attr = f' id="{conv_id}"' if conv_id else ""
             body += f"""
         <div class="funil-arrow">
           <div class="funil-arrow-line"></div>
           <div class="funil-conv-badge">
-            <span class="funil-conv-pct">{pct}</span>
+            <span class="funil-conv-pct"{id_conv_attr}>{pct}</span>
             <span class="funil-conv-label">{desc}</span>
           </div>
           <div class="funil-arrow-line"></div>
@@ -534,9 +548,12 @@ def funnel_html(stages, conversions, platform, funnel_title, metrics_rows):
 
     metrics_html = ""
     for etapa, items in metrics_rows:
-        items_html = "".join(
-            f"""<div><div class="funil-metric-val {cls}">{val}</div><div class="funil-metric-lbl">{lbl}</div></div>"""
-            for val, lbl, cls in items)
+        items_html = ""
+        for item in items:
+            val, lbl, cls = item[0], item[1], item[2]
+            item_id = item[3] if len(item) > 3 else None
+            id_attr = f' id="{item_id}"' if item_id else ""
+            items_html += f"""<div><div class="funil-metric-val {cls}"{id_attr}>{val}</div><div class="funil-metric-lbl">{lbl}</div></div>"""
         metrics_html += f"""
       <div class="funil-metric-row">
         <div class="funil-metric-etapa">{etapa}</div>
@@ -573,27 +590,27 @@ def build_meta_funnel(account, m):
         taxa_finalizacao = sdiv(m["purchases"], m["initiate_checkout"]) * 100
 
         stages = [
-            ("Alcance", fmt_num(m["reach"]), "pessoas únicas"),
-            ("Cliques no Link", fmt_num(m["clicks"]), f"CTR {fmt_pct(m['ctr'])}"),
-            ("Visualização da Página", fmt_num(m["lpv"]), "página de compra"),
-            ("Add to Cart", fmt_num(m["add_to_cart"]), "adicionaram ao carrinho"),
-            ("Iniciar Checkout", fmt_num(m["initiate_checkout"]), "iniciaram o checkout"),
-            ("Compras", fmt_num(m["purchases"]), f"receita {fmt_brl(m['revenue'])}"),
+            ("Alcance", fmt_num(m["reach"]), "pessoas únicas · 30d fixo"),
+            ("Cliques no Link", fmt_num(m["clicks"]), f"CTR {fmt_pct(m['ctr'])}", ("pfStageClicksVal", "pfStageClicksSub")),
+            ("Visualização da Página", fmt_num(m["lpv"]), "página de compra", ("pfStageLpvVal", None)),
+            ("Add to Cart", fmt_num(m["add_to_cart"]), "adicionaram ao carrinho", ("pfStageAtcVal", None)),
+            ("Iniciar Checkout", fmt_num(m["initiate_checkout"]), "iniciaram o checkout", ("pfStageIcVal", None)),
+            ("Compras", fmt_num(m["purchases"]), f"receita {fmt_brl(m['revenue'])}", ("pfStageComprasVal", "pfStageComprasSub")),
         ]
         convs = [
             (fmt_pct(sdiv(m["clicks"], m["reach"]) * 100), "clicaram"),
-            (fmt_pct(taxa_conexao), "carregaram a página"),
-            (fmt_pct(sdiv(m["initiate_checkout"], m["add_to_cart"]) * 100), "avançaram pro checkout"),
-            (fmt_pct(taxa_finalizacao), "compraram"),
-            (fmt_pct(sdiv(m["purchases"], m["lpv"]) * 100), "conversão total"),
+            (fmt_pct(taxa_conexao), "carregaram a página", "pfArrowConexao"),
+            (fmt_pct(sdiv(m["initiate_checkout"], m["add_to_cart"]) * 100), "avançaram pro checkout", "pfArrowCheckout"),
+            (fmt_pct(taxa_finalizacao), "compraram", "pfArrowFinal"),
+            (fmt_pct(sdiv(m["purchases"], m["lpv"]) * 100), "conversão total", "pfArrowTotal"),
         ]
         mrows = [
-            ("Etapa 1 — Entrega", [(fmt_num(m["reach"]), "Alcance", ""), (fmt_num(m["impressions"]), "Impressões", ""), (fmt_brl(m["cpm"]), "CPM", "")]),
-            ("Etapa 2 — Engajamento", [(fmt_pct(m["ctr"]), "CTR", "green" if m["ctr"] > 1.5 else ""), (fmt_num(m["clicks"]), "Cliques", ""), (fmt_brl(m["cpc"]), "CPC", "")]),
-            ("Etapa 3 — Página", [(fmt_num(m["lpv"]), "Visualizações", ""), (fmt_pct(taxa_conexao), "Taxa de Conexão", "green" if taxa_conexao >= 75 else "")]),
-            ("Etapa 4 — Carrinho", [(fmt_num(m["add_to_cart"]), "Add to Cart", ""), (fmt_pct(taxa_add_to_cart), "Taxa de Add to Cart", "")]),
-            ("Etapa 5 — Checkout", [(fmt_num(m["initiate_checkout"]), "Checkouts Iniciados", ""), (fmt_pct(taxa_checkout), "Taxa de Checkout", "")]),
-            ("Etapa 6 — Venda", [(fmt_num(m["purchases"]), "Compras", "gold"), (fmt_pct(taxa_finalizacao), "Taxa de Finalização de Compra", ""), (fmt_brl(m["revenue"]), "Receita", "green"), (fmt_x(roas), "ROAS", "green" if roas >= 2 else ""), (fmt_brl(cpa), "CPA", "")]),
+            ("Etapa 1 — Entrega", [(fmt_num(m["reach"]), "Alcance · 30d fixo", ""), (fmt_num(m["impressions"]), "Impressões", "", "pfImp"), (fmt_brl(m["cpm"]), "CPM", "", "pfCpm")]),
+            ("Etapa 2 — Engajamento", [(fmt_pct(m["ctr"]), "CTR", "green" if m["ctr"] > 1.5 else "", "pfCtr"), (fmt_num(m["clicks"]), "Cliques", "", "pfClicks"), (fmt_brl(m["cpc"]), "CPC", "", "pfCpc")]),
+            ("Etapa 3 — Página", [(fmt_num(m["lpv"]), "Visualizações", "", "pfLpv"), (fmt_pct(taxa_conexao), "Taxa de Conexão", "green" if taxa_conexao >= 75 else "", "pfConexao")]),
+            ("Etapa 4 — Carrinho", [(fmt_num(m["add_to_cart"]), "Add to Cart", "", "pfAtc"), (fmt_pct(taxa_add_to_cart), "Taxa de Add to Cart", "", "pfTaxaAtc")]),
+            ("Etapa 5 — Checkout", [(fmt_num(m["initiate_checkout"]), "Checkouts Iniciados", "", "pfIc"), (fmt_pct(taxa_checkout), "Taxa de Checkout", "", "pfTaxaCheckout")]),
+            ("Etapa 6 — Venda", [(fmt_num(m["purchases"]), "Compras", "gold", "pfCompras"), (fmt_pct(taxa_finalizacao), "Taxa de Finalização de Compra", "", "pfTaxaFinal"), (fmt_brl(m["revenue"]), "Receita", "green", "pfReceita"), (fmt_x(roas), "ROAS", "green" if roas >= 2 else "", "pfRoas"), (fmt_brl(cpa), "CPA", "", "pfCpa")]),
         ]
         return funnel_html(stages, convs, "meta", "Funil de Vendas — Meta Ads", mrows)
 
@@ -1250,6 +1267,52 @@ def page_distribuicao_meta(account, meta):
 
 
 def page_funil(account, meta, g):
+    is_purchase = bool(meta) and account.get("result_event") == "purchase"
+
+    period_bar = ""
+    if is_purchase:
+        period_bar = """
+  <div class="period-bar-inline">
+    <span class="period-label">Período do Funil</span>
+    <div class="period-btns">
+      <button class="pbtn" onclick="setPeriodF(this,'1d')">Hoje</button>
+      <button class="pbtn" onclick="setPeriodF(this,'7d')">7 dias</button>
+      <button class="pbtn active" onclick="setPeriodF(this,'30d')">30 dias</button>
+      <button class="pbtn" onclick="setPeriodF(this,'month')">Mês atual</button>
+      <button class="pbtn" onclick="setPeriodF(this,'lmonth')">Mês passado</button>
+      <button class="pbtn" onclick="setPeriodF(this,'90d')">3 meses</button>
+      <button class="pbtn" onclick="setPeriodF(this,'180d')">6 meses</button>
+      <button class="pbtn" onclick="toggleCustomF(this)">📅 Personalizado</button>
+    </div>
+    <div class="custom-wrap" id="customWrapF">
+      <input type="date" class="date-inp" id="dateFromF">
+      <span style="color:var(--dim);font-size:11px">até</span>
+      <input type="date" class="date-inp" id="dateToF">
+      <button class="date-apply" onclick="applyCustomF()">Aplicar</button>
+    </div>
+  </div>
+  <div id="periodTagF" style="font-size:11px;color:var(--dim);margin:-14px 0 20px 2px">· últimos 30 dias</div>
+
+  <div class="sec-title"><h3>⚖️ Comparar Dois Períodos</h3><div class="sec-line"></div></div>
+  <div class="chart-row" style="grid-template-columns:1fr">
+    <div class="chart-card">
+      <div class="chart-head" style="flex-wrap:wrap;gap:10px">
+        <span class="chart-title">Período A × Período B</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--gold);font-weight:700">A</span>
+          <input type="date" class="date-inp" id="cmpFAFrom">
+          <input type="date" class="date-inp" id="cmpFATo">
+          <span style="font-size:10px;color:#888;font-weight:700;margin-left:6px">B</span>
+          <input type="date" class="date-inp" id="cmpFBFrom">
+          <input type="date" class="date-inp" id="cmpFBTo">
+          <button class="date-apply" onclick="applyCompareF()">Comparar</button>
+        </div>
+      </div>
+      <div id="cmpFTable" style="font-size:12px;color:var(--muted)">Selecione os dois períodos acima e clique em Comparar.</div>
+    </div>
+  </div>
+"""
+
     parts = ""
     if meta:
         parts += build_meta_funnel(account, meta["metrics"])
@@ -1258,6 +1321,7 @@ def page_funil(account, meta, g):
     return f"""
 <div id="page-funil" class="page">
 <div class="page-inner">
+  {period_bar}
   {parts}
 </div>
 </div>"""
@@ -1591,6 +1655,146 @@ def render(account, meta, g):
     document.getElementById('weeklyTable').innerHTML = html;
   }
   renderVendasCongresso();
+"""
+
+        if account.get("result_event") == "purchase":
+            js += """
+  // ════ FILTRO DE PERÍODO — FUNIL DE VENDAS ════
+  function sumFunilRange(from, to) {
+    const acc = { s: 0, c: 0, i: 0, p: 0, v: 0, lpv: 0, atc: 0, ic: 0 };
+    for (const row of DM) {
+      if (row.d >= from && row.d <= to) {
+        acc.s += row.s; acc.c += row.c; acc.i += row.i; acc.p += row.p; acc.v += row.v;
+        acc.lpv += (row.lpv || 0); acc.atc += (row.atc || 0); acc.ic += (row.ic || 0);
+      }
+    }
+    return acc;
+  }
+
+  function funilStats(d) {
+    return {
+      ctr: d.i ? d.c / d.i * 100 : 0,
+      cpc: d.c ? d.s / d.c : 0,
+      cpm: d.i ? d.s / d.i * 1000 : 0,
+      taxaConexao: d.c ? d.lpv / d.c * 100 : 0,
+      taxaAtc: d.lpv ? d.atc / d.lpv * 100 : 0,
+      taxaCheckout: d.lpv ? d.ic / d.lpv * 100 : 0,
+      taxaFinal: d.ic ? d.p / d.ic * 100 : 0,
+      convTotal: d.lpv ? d.p / d.lpv * 100 : 0,
+      avancouCheckout: d.atc ? d.ic / d.atc * 100 : 0,
+      roas: d.s ? d.v / d.s : 0,
+      cpa: d.p ? d.s / d.p : 0,
+    };
+  }
+
+  function applyRangeF(from, to, label) {
+    const d = sumFunilRange(from, to);
+    const st = funilStats(d);
+
+    setText('pfStageClicksVal', fmtNum(d.c));
+    setText('pfStageClicksSub', 'CTR ' + fmtPct(st.ctr));
+    setText('pfStageLpvVal', fmtNum(d.lpv));
+    setText('pfStageAtcVal', fmtNum(d.atc));
+    setText('pfStageIcVal', fmtNum(d.ic));
+    setText('pfStageComprasVal', fmtNum(d.p));
+    setText('pfStageComprasSub', 'receita ' + fmtBRL(d.v));
+
+    setText('pfArrowConexao', fmtPct(st.taxaConexao));
+    setText('pfArrowCheckout', fmtPct(st.avancouCheckout));
+    setText('pfArrowFinal', fmtPct(st.taxaFinal));
+    setText('pfArrowTotal', fmtPct(st.convTotal));
+
+    setText('pfImp', fmtNum(d.i));
+    setText('pfCpm', fmtBRL(st.cpm));
+    setText('pfCtr', fmtPct(st.ctr));
+    setText('pfClicks', fmtNum(d.c));
+    setText('pfCpc', fmtBRL(st.cpc));
+    setText('pfLpv', fmtNum(d.lpv));
+    setText('pfConexao', fmtPct(st.taxaConexao));
+    setText('pfAtc', fmtNum(d.atc));
+    setText('pfTaxaAtc', fmtPct(st.taxaAtc));
+    setText('pfIc', fmtNum(d.ic));
+    setText('pfTaxaCheckout', fmtPct(st.taxaCheckout));
+    setText('pfCompras', fmtNum(d.p));
+    setText('pfTaxaFinal', fmtPct(st.taxaFinal));
+    setText('pfReceita', fmtBRL(d.v));
+    setText('pfRoas', fmtX(st.roas));
+    setText('pfCpa', fmtBRL(st.cpa));
+
+    setText('periodTagF', '· ' + label);
+  }
+
+  function setPeriodF(btn, key) {
+    document.querySelectorAll('#page-funil .period-btns .pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrapF').classList.remove('show');
+    const today = new Date();
+    let from, to = dstr(today), label;
+    if (key === '1d')       { from = to; label = 'hoje'; }
+    else if (key === '7d')  { from = dstr(new Date(today - 6 * 86400000)); label = 'últimos 7 dias'; }
+    else if (key === '30d') { from = dstr(new Date(today - 29 * 86400000)); label = 'últimos 30 dias'; }
+    else if (key === '90d') { from = dstr(new Date(today - 89 * 86400000)); label = 'últimos 3 meses'; }
+    else if (key === '180d'){ from = dstr(new Date(today - 179 * 86400000)); label = 'últimos 6 meses'; }
+    else if (key === 'month') { from = to.slice(0, 8) + '01'; label = 'mês atual'; }
+    else if (key === 'lmonth') {
+      const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      from = dstr(d);
+      to = dstr(new Date(today.getFullYear(), today.getMonth(), 0));
+      label = 'mês passado';
+    }
+    applyRangeF(from, to, label);
+  }
+
+  function toggleCustomF(btn) {
+    document.querySelectorAll('#page-funil .period-btns .pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrapF').classList.toggle('show');
+  }
+
+  function applyCustomF() {
+    const f = document.getElementById('dateFromF').value, t = document.getElementById('dateToF').value;
+    if (f && t) applyRangeF(f, t, f.slice(8) + '/' + f.slice(5,7) + ' a ' + t.slice(8) + '/' + t.slice(5,7));
+  }
+
+  function applyCompareF() {
+    const af = document.getElementById('cmpFAFrom').value, at = document.getElementById('cmpFATo').value;
+    const bf = document.getElementById('cmpFBFrom').value, bt = document.getElementById('cmpFBTo').value;
+    if (!(af && at && bf && bt)) return;
+    const dA = sumFunilRange(af, at), dB = sumFunilRange(bf, bt);
+    const stA = funilStats(dA), stB = funilStats(dB);
+    const rows = [
+      ['Investimento', fmtBRL(dA.s), fmtBRL(dB.s)],
+      ['Cliques', fmtNum(dA.c), fmtNum(dB.c)],
+      ['CTR', fmtPct(stA.ctr), fmtPct(stB.ctr)],
+      ['Pageviews', fmtNum(dA.lpv), fmtNum(dB.lpv)],
+      ['Taxa de Conexão', fmtPct(stA.taxaConexao), fmtPct(stB.taxaConexao)],
+      ['Add to Cart', fmtNum(dA.atc), fmtNum(dB.atc)],
+      ['Taxa de Add to Cart', fmtPct(stA.taxaAtc), fmtPct(stB.taxaAtc)],
+      ['Checkouts Iniciados', fmtNum(dA.ic), fmtNum(dB.ic)],
+      ['Taxa de Checkout', fmtPct(stA.taxaCheckout), fmtPct(stB.taxaCheckout)],
+      ['Compras', fmtNum(dA.p), fmtNum(dB.p)],
+      ['Taxa de Finalização de Compra', fmtPct(stA.taxaFinal), fmtPct(stB.taxaFinal)],
+      ['Receita', fmtBRL(dA.v), fmtBRL(dB.v)],
+      ['ROAS', fmtX(stA.roas), fmtX(stB.roas)],
+      ['CPA', fmtBRL(stA.cpa), fmtBRL(stB.cpa)],
+    ];
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<tr style="border-bottom:1px solid var(--border)">' +
+      '<th style="text-align:left;padding:8px 6px;color:var(--dim);font-weight:600">Métrica</th>' +
+      '<th style="text-align:right;padding:8px 6px;color:var(--gold);font-weight:700">Período A</th>' +
+      '<th style="text-align:right;padding:8px 6px;color:#888;font-weight:700">Período B</th></tr>';
+    rows.forEach(r => {
+      html += '<tr style="border-bottom:1px solid var(--border)">' +
+        '<td style="padding:7px 6px;color:var(--muted)">' + r[0] + '</td>' +
+        '<td style="padding:7px 6px;text-align:right;color:var(--text);font-weight:700">' + r[1] + '</td>' +
+        '<td style="padding:7px 6px;text-align:right;color:var(--text);font-weight:700">' + r[2] + '</td></tr>';
+    });
+    html += '</table>';
+    document.getElementById('cmpFTable').innerHTML = html;
+  }
+
+  // Estado inicial do filtro do funil: últimos 30 dias
+  applyRangeF(dstr(new Date(_t - 29 * 86400000)), dstr(_t), 'últimos 30 dias');
 """
 
     if has_goog:
