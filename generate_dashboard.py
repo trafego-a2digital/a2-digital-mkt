@@ -78,6 +78,8 @@ def fetch_meta(account):
         "results":     extract_action(acts, result_event),
         "msgs":        extract_action(acts, MSG_EVENT),
         "lpv":         extract_action(acts, "landing_page_view"),
+        "add_to_cart": extract_action(acts, "omni_add_to_cart"),
+        "initiate_checkout": extract_action(acts, "omni_initiated_checkout"),
         "purchases":   extract_action(acts, "purchase"),
         "revenue":     extract_action_value(avs, "purchase"),
         "video_views": extract_action(acts, "video_view"),
@@ -502,6 +504,7 @@ def funnel_html(stages, conversions, platform, funnel_title, metrics_rows):
         ("linear-gradient(135deg,#F5A623,#d97706)", "polygon(5% 0%,95% 0%,99% 100%,1% 100%)", "72%"),
         ("linear-gradient(135deg,#22c55e,#16a34a)", "polygon(4% 0%,96% 0%,100% 100%,0% 100%)", "56%"),
         ("linear-gradient(135deg,#ec4899,#db2777)", "polygon(3% 0%,97% 0%,100% 100%,0% 100%)", "44%"),
+        ("linear-gradient(135deg,#14b8a6,#0f766e)", "polygon(2% 0%,98% 0%,100% 100%,0% 100%)", "35%"),
     ]
     plat_cls = "funil-plat-meta" if platform == "meta" else "funil-plat-google"
     plat_txt = "● Meta Ads" if platform == "meta" else "● Google Ads"
@@ -563,22 +566,34 @@ def build_meta_funnel(account, m):
 
     if revt == "purchase":
         roas = sdiv(m["revenue"], spend)
+        cpa = sdiv(spend, m["purchases"])
+        taxa_conexao = sdiv(m["lpv"], m["clicks"]) * 100
+        taxa_add_to_cart = sdiv(m["add_to_cart"], m["lpv"]) * 100
+        taxa_checkout = sdiv(m["initiate_checkout"], m["lpv"]) * 100
+        taxa_finalizacao = sdiv(m["purchases"], m["initiate_checkout"]) * 100
+
         stages = [
             ("Alcance", fmt_num(m["reach"]), "pessoas únicas"),
             ("Cliques no Link", fmt_num(m["clicks"]), f"CTR {fmt_pct(m['ctr'])}"),
             ("Visualização da Página", fmt_num(m["lpv"]), "página de compra"),
+            ("Add to Cart", fmt_num(m["add_to_cart"]), "adicionaram ao carrinho"),
+            ("Iniciar Checkout", fmt_num(m["initiate_checkout"]), "iniciaram o checkout"),
             ("Compras", fmt_num(m["purchases"]), f"receita {fmt_brl(m['revenue'])}"),
         ]
         convs = [
             (fmt_pct(sdiv(m["clicks"], m["reach"]) * 100), "clicaram"),
-            (fmt_pct(sdiv(m["lpv"], m["clicks"]) * 100), "carregaram a página"),
-            (fmt_pct(sdiv(m["purchases"], m["lpv"]) * 100), "compraram"),
+            (fmt_pct(taxa_conexao), "carregaram a página"),
+            (fmt_pct(sdiv(m["initiate_checkout"], m["add_to_cart"]) * 100), "avançaram pro checkout"),
+            (fmt_pct(taxa_finalizacao), "compraram"),
+            (fmt_pct(sdiv(m["purchases"], m["lpv"]) * 100), "conversão total"),
         ]
         mrows = [
             ("Etapa 1 — Entrega", [(fmt_num(m["reach"]), "Alcance", ""), (fmt_num(m["impressions"]), "Impressões", ""), (fmt_brl(m["cpm"]), "CPM", "")]),
             ("Etapa 2 — Engajamento", [(fmt_pct(m["ctr"]), "CTR", "green" if m["ctr"] > 1.5 else ""), (fmt_num(m["clicks"]), "Cliques", ""), (fmt_brl(m["cpc"]), "CPC", "")]),
-            ("Etapa 3 — Página", [(fmt_num(m["lpv"]), "Visualizações", ""), (fmt_pct(sdiv(m["lpv"], m["clicks"]) * 100), "Conexão", "")]),
-            ("Etapa 4 — Venda", [(fmt_num(m["purchases"]), "Compras", "gold"), (fmt_brl(m["revenue"]), "Receita", "green"), (fmt_x(roas), "ROAS", "green" if roas >= 2 else "")]),
+            ("Etapa 3 — Página", [(fmt_num(m["lpv"]), "Visualizações", ""), (fmt_pct(taxa_conexao), "Taxa de Conexão", "green" if taxa_conexao >= 75 else "")]),
+            ("Etapa 4 — Carrinho", [(fmt_num(m["add_to_cart"]), "Add to Cart", ""), (fmt_pct(taxa_add_to_cart), "Taxa de Add to Cart", "")]),
+            ("Etapa 5 — Checkout", [(fmt_num(m["initiate_checkout"]), "Checkouts Iniciados", ""), (fmt_pct(taxa_checkout), "Taxa de Checkout", "")]),
+            ("Etapa 6 — Venda", [(fmt_num(m["purchases"]), "Compras", "gold"), (fmt_pct(taxa_finalizacao), "Taxa de Finalização de Compra", ""), (fmt_brl(m["revenue"]), "Receita", "green"), (fmt_x(roas), "ROAS", "green" if roas >= 2 else ""), (fmt_brl(cpa), "CPA", "")]),
         ]
         return funnel_html(stages, convs, "meta", "Funil de Vendas — Meta Ads", mrows)
 
