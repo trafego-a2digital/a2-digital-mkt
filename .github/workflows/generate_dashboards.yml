@@ -21,7 +21,7 @@ jobs:
           python-version: "3.11"
 
       - name: Instalar dependências
-        run: pip install requests google-ads
+        run: pip install requests google-ads google-analytics-data
 
       - name: Copiar logo A2 Digital
         run: cp assets/logo_a2.png logo_a2.png
@@ -34,6 +34,7 @@ jobs:
           GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
           GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
           GOOGLE_ADS_REFRESH_TOKEN: ${{ secrets.GOOGLE_ADS_REFRESH_TOKEN }}
+          GA4_SERVICE_ACCOUNT_JSON: ${{ secrets.GA4_SERVICE_ACCOUNT_JSON }}
         run: python generate_dashboard.py
 
       - name: Gerar index com links de todos os clientes
