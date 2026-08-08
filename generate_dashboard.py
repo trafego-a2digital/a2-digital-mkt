@@ -5,7 +5,8 @@ Meta Ads + Google Ads + Consolidado + Funis por plataforma.
 Secrets necessários:
   META_ACCESS_TOKEN, DASHBOARD_ACCOUNTS,
   GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID,
-  GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN
+  GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN,
+  GA4_SERVICE_ACCOUNT_JSON (opcional — habilita a aba "Comportamento no site")
 """
 
 import os, json, sys, base64, datetime, requests
@@ -18,6 +19,17 @@ API_VER  = "v20.0"
 BASE_URL = f"https://graph.facebook.com/{API_VER}"
 OUT_DIR  = Path("docs")
 OUT_DIR.mkdir(exist_ok=True)
+
+GA4_CREDENTIALS = None
+_ga4_raw = os.environ.get("GA4_SERVICE_ACCOUNT_JSON", "")
+if _ga4_raw:
+    try:
+        from google.oauth2 import service_account
+        GA4_CREDENTIALS = service_account.Credentials.from_service_account_info(
+            json.loads(_ga4_raw),
+            scopes=["https://www.googleapis.com/auth/analytics.readonly"])
+    except Exception as e:
+        print(f"  ⚠ Não foi possível carregar credencial GA4: {e}", file=sys.stderr)
 
 LOGO_B64 = ""
 logo_path = Path("assets/logo_a2.png")
@@ -254,6 +266,51 @@ def fetch_google(account):
         })
 
     return {"metrics": metrics, "campaigns": camps, "daily_compact": goog_daily_compact}
+
+
+# ════════════════════════════════════════════════════════════════════
+# GA4 — TEMPO POR SEÇÃO (evento section_time)
+# ════════════════════════════════════════════════════════════════════
+
+def fetch_ga4_section_time(property_id, days=30):
+    """Busca o tempo médio por seção (evento section_time, dimensão section_name,
+    métrica time_seconds) numa propriedade GA4, nos últimos `days` dias."""
+    if not GA4_CREDENTIALS:
+        return None
+
+    from google.analytics.data_v1beta import BetaAnalyticsDataClient
+    from google.analytics.data_v1beta.types import (
+        RunReportRequest, DateRange, Dimension, Metric, Filter, FilterExpression)
+
+    client = BetaAnalyticsDataClient(credentials=GA4_CREDENTIALS)
+    today = datetime.date.today()
+    start = (today - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+    end   = (today - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+
+    request = RunReportRequest(
+        property=f"properties/{property_id}",
+        date_ranges=[DateRange(start_date=start, end_date=end)],
+        dimensions=[Dimension(name="customEvent:section_name")],
+        metrics=[Metric(name="eventCount"), Metric(name="customEvent:time_seconds")],
+        dimension_filter=FilterExpression(
+            filter=Filter(field_name="eventName",
+                          string_filter=Filter.StringFilter(value="section_time"))),
+        limit=50,
+    )
+    resp = client.run_report(request)
+
+    rows = []
+    for row in resp.rows:
+        name = row.dimension_values[0].value or "(sem nome)"
+        count = int(float(row.metric_values[0].value or 0))
+        total = float(row.metric_values[1].value or 0)
+        avg = (total / count) if count else 0
+        rows.append({"section": name, "avg_seconds": round(avg, 1), "events": count})
+
+    rows.sort(key=lambda r: r["avg_seconds"], reverse=True)
+    return rows
+
+
 # ════════════════════════════════════════════════════════════════════
 # FORMATAÇÃO
 # ════════════════════════════════════════════════════════════════════
@@ -1354,11 +1411,46 @@ def page_vendas_congresso(account, meta):
 </div>"""
 
 
+def page_comportamento_site(ga4_rows):
+    """Tempo médio por seção da página (evento GA4 section_time), últimos 30 dias."""
+    if not ga4_rows:
+        body = '<p style="color:var(--muted)">Sem dados de comportamento no período — verifique se o evento <code>section_time</code> está disparando no site.</p>'
+    else:
+        max_avg = max(r["avg_seconds"] for r in ga4_rows) or 1
+        hbars = ""
+        for r in ga4_rows:
+            pct = int(sdiv(r["avg_seconds"], max_avg) * 100)
+            mins = int(r["avg_seconds"] // 60)
+            secs = int(r["avg_seconds"] % 60)
+            val_txt = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
+            hbars += f"""<div class="hbar-item">
+      <div class="hbar-label">{r["section"]}</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:{max(pct,8)}%"><span class="hbar-val">{val_txt}</span></div></div>
+    </div>"""
+        cards = kcard("Seções Rastreadas", str(len(ga4_rows)), "", vid="")
+        cards += kcard("Maior Tempo Médio", f"{ga4_rows[0]['section']}", f"{int(ga4_rows[0]['avg_seconds'])}s", "gold")
+        total_events = sum(r["events"] for r in ga4_rows)
+        cards += kcard("Eventos section_time", fmt_num(total_events), "últimos 30d")
+        body = f"""
+  <div class="kpi-grid kpi-grid-3">{cards}</div>
+  <div class="sec-title" style="margin-top:28px"><h3>⏱️ Tempo Médio por Seção</h3><div class="sec-line"></div></div>
+  <div class="chart-card"><div class="hbar-list">{hbars}</div></div>"""
+
+    return f"""
+<div id="page-comportamento" class="page">
+<div class="page-inner">
+  <div class="sec-title"><h3>👀 Comportamento no Site — Últimos 30 dias</h3><div class="sec-line"></div></div>
+  <p style="color:var(--muted);font-size:12px;margin-bottom:8px">Tempo médio de permanência por seção da página, via GA4 (evento <code>section_time</code>).</p>
+  {body}
+</div>
+</div>"""
+
+
 # ════════════════════════════════════════════════════════════════════
 # RENDER FINAL
 # ════════════════════════════════════════════════════════════════════
 
-def render(account, meta, g):
+def render(account, meta, g, ga4_rows=None):
     name = account["name"]
     has_meta = meta is not None
     has_goog = g is not None
@@ -1386,6 +1478,8 @@ def render(account, meta, g):
     if has_meta and account.get("is_congresso"):
         tabs.append(("vendas", "Vendas Diárias"))
     tabs.append(("funil", "Funil"))
+    if ga4_rows is not None:
+        tabs.append(("comportamento", "Comportamento no Site"))
 
     first_tab = tabs[0][0]
 
@@ -1412,6 +1506,9 @@ def render(account, meta, g):
         pages += page_vendas_congresso(account, meta)
 
     pages += page_funil(account, meta if has_meta else None, g if has_goog else None)
+
+    if ga4_rows is not None:
+        pages += page_comportamento_site(ga4_rows)
 
     tab_btns = "".join(
         f"""<button class="nav-tab{' active' if t[0] == first_tab else ''}" onclick="showPage('{t[0]}',this)">{t[1]}</button>"""
@@ -2023,13 +2120,22 @@ def main():
             except Exception as e:
                 print(f"     ✗ Google ERRO: {e}", file=sys.stderr)
 
+        ga4_rows = None
+        ga4_property_id = account.get("ga4_property_id")
+        if ga4_property_id:
+            try:
+                ga4_rows = fetch_ga4_section_time(ga4_property_id) or []
+            except Exception as e:
+                print(f"     ✗ GA4 ERRO: {e}", file=sys.stderr)
+                ga4_rows = []  # aba aparece, mas com aviso de "sem dados"
+
         if not meta_data and not goog_data:
             print(f"     ✗ Sem dados — pulando")
             fail += 1
             continue
 
         try:
-            html = render(account, meta_data, goog_data)
+            html = render(account, meta_data, goog_data, ga4_rows)
             with open(OUT_DIR / f"{slug}.html", "w", encoding="utf-8") as f:
                 f.write(html)
             print(f"     ✓ docs/{slug}.html")
