@@ -272,9 +272,10 @@ def fetch_google(account):
 # GA4 — TEMPO POR SEÇÃO (evento section_time)
 # ════════════════════════════════════════════════════════════════════
 
-def fetch_ga4_section_time(property_id, days=30):
-    """Busca o tempo médio por seção (evento section_time, dimensão section_name,
-    métrica time_seconds) numa propriedade GA4, nos últimos `days` dias."""
+def fetch_ga4_section_daily(property_id, days=180):
+    """Busca o detalhamento diário por seção (evento section_time, dimensão section_name,
+    métrica time_seconds) numa propriedade GA4, nos últimos `days` dias — granularidade
+    diária pra alimentar o filtro de período dinâmico no dashboard."""
     if not GA4_CREDENTIALS:
         return None
 
@@ -290,23 +291,40 @@ def fetch_ga4_section_time(property_id, days=30):
     request = RunReportRequest(
         property=f"properties/{property_id}",
         date_ranges=[DateRange(start_date=start, end_date=end)],
-        dimensions=[Dimension(name="customEvent:section_name")],
+        dimensions=[Dimension(name="date"), Dimension(name="customEvent:section_name")],
         metrics=[Metric(name="eventCount"), Metric(name="customEvent:time_seconds")],
         dimension_filter=FilterExpression(
             filter=Filter(field_name="eventName",
                           string_filter=Filter.StringFilter(value="section_time"))),
-        limit=50,
+        limit=100000,
     )
     resp = client.run_report(request)
 
     rows = []
     for row in resp.rows:
-        name = row.dimension_values[0].value or "(sem nome)"
+        d_raw = row.dimension_values[0].value  # formato YYYYMMDD
+        d = f"{d_raw[0:4]}-{d_raw[4:6]}-{d_raw[6:8]}"
+        section = row.dimension_values[1].value or "(sem nome)"
         count = int(float(row.metric_values[0].value or 0))
         total = float(row.metric_values[1].value or 0)
-        avg = (total / count) if count else 0
-        rows.append({"section": name, "avg_seconds": round(avg, 1), "events": count})
+        rows.append({"d": d, "s": section, "c": count, "t": round(total, 1)})
+    return rows
 
+
+def aggregate_section_rows(daily_rows, days=30):
+    """Agrupa o detalhamento diário num snapshot (últimos `days` dias) — usado
+    pra renderizar o estado inicial da página, antes do filtro JS assumir."""
+    today = datetime.date.today()
+    start = (today - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+    end   = (today - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    acc = {}
+    for row in daily_rows or []:
+        if start <= row["d"] <= end:
+            a = acc.setdefault(row["s"], {"c": 0, "t": 0.0})
+            a["c"] += row["c"]
+            a["t"] += row["t"]
+    rows = [{"section": s, "avg_seconds": round(sdiv(v["t"], v["c"]), 1), "events": v["c"]}
+            for s, v in acc.items()]
     rows.sort(key=lambda r: r["avg_seconds"], reverse=True)
     return rows
 
@@ -1412,36 +1430,83 @@ def page_vendas_congresso(account, meta):
 
 
 def page_comportamento_site(ga4_rows):
-    """Tempo médio por seção da página (evento GA4 section_time), últimos 30 dias."""
+    """Tempo médio por seção da página (evento GA4 section_time) — com filtro
+    de período e comparação entre dois períodos, alimentados via JS a partir
+    do histórico diário (GA4_DAILY)."""
     if not ga4_rows:
-        body = '<p style="color:var(--muted)">Sem dados de comportamento no período — verifique se o evento <code>section_time</code> está disparando no site.</p>'
+        hbars_html = '<p style="color:var(--muted)">Sem dados de comportamento no período — verifique se o evento <code>section_time</code> está disparando no site.</p>'
+        top_section, top_sub = "—", ""
+        total_events = 0
     else:
         max_avg = max(r["avg_seconds"] for r in ga4_rows) or 1
-        hbars = ""
+        hbars_html = ""
         for r in ga4_rows:
             pct = int(sdiv(r["avg_seconds"], max_avg) * 100)
             mins = int(r["avg_seconds"] // 60)
             secs = int(r["avg_seconds"] % 60)
             val_txt = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
-            hbars += f"""<div class="hbar-item">
-      <div class="hbar-label">{r["section"]}</div>
+            events_txt = f"{r['events']} evento" + ("s" if r["events"] != 1 else "")
+            hbars_html += f"""<div class="hbar-item">
+      <div class="hbar-label" style="white-space:normal;overflow:visible;text-overflow:clip;line-height:1.3">{r["section"]}<br><span style="font-size:9px;color:var(--dim)">{events_txt}</span></div>
       <div class="hbar-track"><div class="hbar-fill" style="width:{max(pct,8)}%"><span class="hbar-val">{val_txt}</span></div></div>
     </div>"""
-        cards = kcard("Seções Rastreadas", str(len(ga4_rows)), "", vid="")
-        cards += kcard("Maior Tempo Médio", f"{ga4_rows[0]['section']}", f"{int(ga4_rows[0]['avg_seconds'])}s", "gold")
+        top_section = ga4_rows[0]["section"]
+        top_sub = f"{int(ga4_rows[0]['avg_seconds'])}s"
         total_events = sum(r["events"] for r in ga4_rows)
-        cards += kcard("Eventos section_time", fmt_num(total_events), "últimos 30d")
-        body = f"""
-  <div class="kpi-grid kpi-grid-3">{cards}</div>
-  <div class="sec-title" style="margin-top:28px"><h3>⏱️ Tempo Médio por Seção</h3><div class="sec-line"></div></div>
-  <div class="chart-card"><div class="hbar-list">{hbars}</div></div>"""
+
+    cards = kcard("Seções Rastreadas", str(len(ga4_rows)), "últimos 30 dias", vid="gaSecoes")
+    cards += kcard("Maior Tempo Médio", top_section, top_sub, "gold", vid="gaTopSecao")
+    cards += kcard("Eventos section_time", fmt_num(total_events), "últimos 30 dias", vid="gaEventos")
 
     return f"""
 <div id="page-comportamento" class="page">
 <div class="page-inner">
-  <div class="sec-title"><h3>👀 Comportamento no Site — Últimos 30 dias</h3><div class="sec-line"></div></div>
-  <p style="color:var(--muted);font-size:12px;margin-bottom:8px">Tempo médio de permanência por seção da página, via GA4 (evento <code>section_time</code>).</p>
-  {body}
+  <div class="sec-title"><h3>👀 Comportamento no Site</h3><div class="sec-line"></div></div>
+  <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Tempo médio de permanência por seção da página, via GA4 (evento <code>section_time</code>).</p>
+
+  <div class="period-bar-inline">
+    <span class="period-label">Período</span>
+    <div class="period-btns">
+      <button class="pbtn" onclick="setPeriodG(this,'1d')">Hoje</button>
+      <button class="pbtn" onclick="setPeriodG(this,'7d')">7 dias</button>
+      <button class="pbtn active" onclick="setPeriodG(this,'30d')">30 dias</button>
+      <button class="pbtn" onclick="setPeriodG(this,'month')">Mês atual</button>
+      <button class="pbtn" onclick="setPeriodG(this,'lmonth')">Mês passado</button>
+      <button class="pbtn" onclick="setPeriodG(this,'90d')">3 meses</button>
+      <button class="pbtn" onclick="setPeriodG(this,'180d')">6 meses</button>
+      <button class="pbtn" onclick="toggleCustomG(this)">📅 Personalizado</button>
+    </div>
+    <div class="custom-wrap" id="customWrapG">
+      <input type="date" class="date-inp" id="dateFromG">
+      <span style="color:var(--dim);font-size:11px">até</span>
+      <input type="date" class="date-inp" id="dateToG">
+      <button class="date-apply" onclick="applyCustomG()">Aplicar</button>
+    </div>
+  </div>
+  <div id="periodTagG" style="font-size:11px;color:var(--dim);margin:-14px 0 20px 2px">· últimos 30 dias</div>
+
+  <div class="kpi-grid kpi-grid-3">{cards}</div>
+  <div class="sec-title" style="margin-top:28px"><h3>⏱️ Tempo Médio por Seção</h3><div class="sec-line"></div></div>
+  <div class="chart-card"><div class="hbar-list" id="gaHbarList">{hbars_html}</div></div>
+
+  <div class="sec-title" style="margin-top:36px"><h3>⚖️ Comparar Dois Períodos</h3><div class="sec-line"></div></div>
+  <div class="chart-row" style="grid-template-columns:1fr">
+    <div class="chart-card">
+      <div class="chart-head" style="flex-wrap:wrap;gap:10px">
+        <span class="chart-title">Período A × Período B</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--gold);font-weight:700">A</span>
+          <input type="date" class="date-inp" id="cmpGAFrom">
+          <input type="date" class="date-inp" id="cmpGATo">
+          <span style="font-size:10px;color:#888;font-weight:700;margin-left:6px">B</span>
+          <input type="date" class="date-inp" id="cmpGBFrom">
+          <input type="date" class="date-inp" id="cmpGBTo">
+          <button class="date-apply" onclick="applyCompareG()">Comparar</button>
+        </div>
+      </div>
+      <div id="cmpGTable" style="font-size:12px;color:var(--muted)">Selecione os dois períodos acima e clique em Comparar.</div>
+    </div>
+  </div>
 </div>
 </div>"""
 
@@ -1450,7 +1515,8 @@ def page_comportamento_site(ga4_rows):
 # RENDER FINAL
 # ════════════════════════════════════════════════════════════════════
 
-def render(account, meta, g, ga4_rows=None):
+def render(account, meta, g, ga4_daily=None):
+    ga4_rows = aggregate_section_rows(ga4_daily, 30) if ga4_daily is not None else None
     name = account["name"]
     has_meta = meta is not None
     has_goog = g is not None
@@ -2034,6 +2100,140 @@ def render(account, meta, g, ga4_rows=None):
   }}
 """
 
+    if ga4_daily is not None:
+        js += f"""
+  // ════ COMPORTAMENTO NO SITE — GA4 (section_time) ════
+  const GA4_DAILY = {json.dumps(ga4_daily)};
+
+  function fmtNumG(v) {{ return Math.round(v).toLocaleString('pt-BR'); }}
+  function setTextG(id, txt) {{ const el = document.getElementById(id); if (el) el.textContent = txt; }}
+  function dstrG(d) {{ return d.toISOString().slice(0, 10); }}
+
+  function sumSectionRangeG(from, to) {{
+    const acc = {{}};
+    for (const row of GA4_DAILY) {{
+      if (row.d >= from && row.d <= to) {{
+        if (!acc[row.s]) acc[row.s] = {{ c: 0, t: 0 }};
+        acc[row.s].c += row.c;
+        acc[row.s].t += row.t;
+      }}
+    }}
+    return Object.entries(acc)
+      .map(([s, v]) => ({{ section: s, avg: v.c ? v.t / v.c : 0, events: v.c }}))
+      .sort((a, b) => b.avg - a.avg);
+  }}
+
+  function fmtSecG(avg) {{
+    const mins = Math.floor(avg / 60), secs = Math.round(avg % 60);
+    return mins ? (mins + 'm ' + String(secs).padStart(2, '0') + 's') : (Math.round(avg) + 's');
+  }}
+
+  function renderSectionBarsG(rows) {{
+    const listEl = document.getElementById('gaHbarList');
+    if (!rows.length) {{
+      listEl.innerHTML = '<p style="color:var(--muted)">Sem dados de comportamento no período selecionado.</p>';
+      setTextG('gaSecoes', '0');
+      setTextG('gaTopSecao', '—');
+      setTextG('gaTopSecao-d', '');
+      setTextG('gaEventos', '0');
+      return;
+    }}
+    const maxAvg = Math.max(...rows.map(r => r.avg)) || 1;
+    let html = '';
+    rows.forEach(r => {{
+      const pct = Math.max(Math.round(r.avg / maxAvg * 100), 8);
+      const evTxt = r.events + (r.events === 1 ? ' evento' : ' eventos');
+      html += '<div class="hbar-item"><div class="hbar-label" style="white-space:normal;overflow:visible;text-overflow:clip;line-height:1.3">' + r.section +
+        '<br><span style="font-size:9px;color:var(--dim)">' + evTxt + '</span></div>' +
+        '<div class="hbar-track"><div class="hbar-fill" style="width:' + pct + '%"><span class="hbar-val">' + fmtSecG(r.avg) + '</span></div></div></div>';
+    }});
+    listEl.innerHTML = html;
+
+    setTextG('gaSecoes', String(rows.length));
+    setTextG('gaTopSecao', rows[0].section);
+    setTextG('gaTopSecao-d', fmtSecG(rows[0].avg));
+    const totalEvents = rows.reduce((s, r) => s + r.events, 0);
+    setTextG('gaEventos', fmtNumG(totalEvents));
+  }}
+
+  function applyRangeG(from, to, label) {{
+    renderSectionBarsG(sumSectionRangeG(from, to));
+    setTextG('periodTagG', '· ' + label);
+  }}
+
+  function setPeriodG(btn, key) {{
+    document.querySelectorAll('#page-comportamento .period-btns .pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrapG').classList.remove('show');
+    const today = new Date();
+    let from, to = dstrG(today), label;
+    if (key === '1d')       {{ from = to; label = 'hoje'; }}
+    else if (key === '7d')  {{ from = dstrG(new Date(today - 6 * 86400000)); label = 'últimos 7 dias'; }}
+    else if (key === '30d') {{ from = dstrG(new Date(today - 29 * 86400000)); label = 'últimos 30 dias'; }}
+    else if (key === '90d') {{ from = dstrG(new Date(today - 89 * 86400000)); label = 'últimos 3 meses'; }}
+    else if (key === '180d'){{ from = dstrG(new Date(today - 179 * 86400000)); label = 'últimos 6 meses'; }}
+    else if (key === 'month') {{ from = to.slice(0, 8) + '01'; label = 'mês atual'; }}
+    else if (key === 'lmonth') {{
+      const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      from = dstrG(d);
+      to = dstrG(new Date(today.getFullYear(), today.getMonth(), 0));
+      label = 'mês passado';
+    }}
+    applyRangeG(from, to, label);
+  }}
+
+  function toggleCustomG(btn) {{
+    document.querySelectorAll('#page-comportamento .period-btns .pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrapG').classList.toggle('show');
+  }}
+
+  function applyCustomG() {{
+    const f = document.getElementById('dateFromG').value, t = document.getElementById('dateToG').value;
+    if (f && t) applyRangeG(f, t, f.slice(8) + '/' + f.slice(5,7) + ' a ' + t.slice(8) + '/' + t.slice(5,7));
+  }}
+
+  function applyCompareG() {{
+    const af = document.getElementById('cmpGAFrom').value, at = document.getElementById('cmpGATo').value;
+    const bf = document.getElementById('cmpGBFrom').value, bt = document.getElementById('cmpGBTo').value;
+    if (!(af && at && bf && bt)) return;
+    const rowsA = sumSectionRangeG(af, at), rowsB = sumSectionRangeG(bf, bt);
+    const mapB = Object.fromEntries(rowsB.map(r => [r.section, r]));
+    const seen = new Set();
+    const rows = [];
+    rowsA.forEach(r => {{
+      seen.add(r.section);
+      const b = mapB[r.section];
+      rows.push([r.section, fmtSecG(r.avg), r.events, b ? fmtSecG(b.avg) : '—', b ? b.events : '—']);
+    }});
+    rowsB.forEach(r => {{ if (!seen.has(r.section)) rows.push([r.section, '—', '—', fmtSecG(r.avg), r.events]); }});
+
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<tr style="border-bottom:1px solid var(--border)">' +
+      '<th style="text-align:left;padding:8px 6px;color:var(--dim);font-weight:600">Seção</th>' +
+      '<th style="text-align:right;padding:8px 6px;color:var(--gold);font-weight:700">Tempo A</th>' +
+      '<th style="text-align:right;padding:8px 6px;color:var(--gold);font-weight:700;opacity:.7">Qtd A</th>' +
+      '<th style="text-align:right;padding:8px 6px;color:#888;font-weight:700">Tempo B</th>' +
+      '<th style="text-align:right;padding:8px 6px;color:#888;font-weight:700;opacity:.7">Qtd B</th></tr>';
+    rows.forEach(r => {{
+      html += '<tr style="border-bottom:1px solid var(--border)">' +
+        '<td style="padding:7px 6px;color:var(--muted)">' + r[0] + '</td>' +
+        '<td style="padding:7px 6px;text-align:right;color:var(--text);font-weight:700">' + r[1] + '</td>' +
+        '<td style="padding:7px 6px;text-align:right;color:var(--muted)">' + r[2] + '</td>' +
+        '<td style="padding:7px 6px;text-align:right;color:var(--text);font-weight:700">' + r[3] + '</td>' +
+        '<td style="padding:7px 6px;text-align:right;color:var(--muted)">' + r[4] + '</td></tr>';
+    }});
+    html += '</table>';
+    document.getElementById('cmpGTable').innerHTML = html;
+  }}
+
+  // Estado inicial: últimos 30 dias
+  {{
+    const _tg = new Date();
+    applyRangeG(dstrG(new Date(_tg - 29 * 86400000)), dstrG(_tg), 'últimos 30 dias');
+  }}
+"""
+
     return f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -2120,14 +2320,14 @@ def main():
             except Exception as e:
                 print(f"     ✗ Google ERRO: {e}", file=sys.stderr)
 
-        ga4_rows = None
+        ga4_daily = None
         ga4_property_id = account.get("ga4_property_id")
         if ga4_property_id:
             try:
-                ga4_rows = fetch_ga4_section_time(ga4_property_id) or []
+                ga4_daily = fetch_ga4_section_daily(ga4_property_id) or []
             except Exception as e:
                 print(f"     ✗ GA4 ERRO: {e}", file=sys.stderr)
-                ga4_rows = []  # aba aparece, mas com aviso de "sem dados"
+                ga4_daily = []  # aba aparece, mas com aviso de "sem dados"
 
         if not meta_data and not goog_data:
             print(f"     ✗ Sem dados — pulando")
@@ -2135,7 +2335,7 @@ def main():
             continue
 
         try:
-            html = render(account, meta_data, goog_data, ga4_rows)
+            html = render(account, meta_data, goog_data, ga4_daily)
             with open(OUT_DIR / f"{slug}.html", "w", encoding="utf-8") as f:
                 f.write(html)
             print(f"     ✓ docs/{slug}.html")
