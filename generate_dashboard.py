@@ -1429,12 +1429,21 @@ def page_vendas_congresso(account, meta):
 </div>"""
 
 
+def _fmt_sec_short(v):
+    mins = int(v // 60)
+    secs = int(v % 60)
+    return f"{mins}m {secs:02d}s" if mins else f"{secs}s"
+
+
 def page_comportamento_site(ga4_rows):
     """Tempo médio por seção da página (evento GA4 section_time) — com filtro
     de período e comparação entre dois períodos, alimentados via JS a partir
-    do histórico diário (GA4_DAILY)."""
+    do histórico diário (GA4_DAILY). A barra é dimensionada pelo tempo médio,
+    mas o número em destaque dentro dela é a quantidade de eventos; o tempo
+    fica como régua de referência no topo."""
     if not ga4_rows:
         hbars_html = '<p style="color:var(--muted)">Sem dados de comportamento no período — verifique se o evento <code>section_time</code> está disparando no site.</p>'
+        axis_html = ""
         top_section, top_sub = "—", ""
         total_events = 0
     else:
@@ -1442,24 +1451,30 @@ def page_comportamento_site(ga4_rows):
         hbars_html = ""
         for r in ga4_rows:
             pct = int(sdiv(r["avg_seconds"], max_avg) * 100)
-            mins = int(r["avg_seconds"] // 60)
-            secs = int(r["avg_seconds"] % 60)
-            val_txt = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
-            events_txt = f"{r['events']} evento" + ("s" if r["events"] != 1 else "")
+            events_txt = fmt_num(r["events"])
             hbars_html += f"""<div class="hbar-item">
-      <div class="hbar-label" style="white-space:normal;overflow:visible;text-overflow:clip;line-height:1.3">{r["section"]}<br><span style="font-size:9px;color:var(--dim)">{events_txt}</span></div>
-      <div class="hbar-track"><div class="hbar-fill" style="width:{max(pct,8)}%"><span class="hbar-val">{val_txt}</span></div></div>
+      <div class="hbar-label">{r["section"]}</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:{max(pct,8)}%"><span class="hbar-val">{events_txt}</span></div></div>
+    </div>"""
+        ticks = [0.25, 0.5, 0.75, 1.0]
+        tick_spans = "".join(
+            f'<span style="position:absolute;left:{int(t*100)}%;transform:translateX(-50%)">{_fmt_sec_short(max_avg * t)}</span>'
+            for t in ticks)
+        axis_html = f"""<div style="display:flex;margin-bottom:8px">
+      <div style="width:130px;flex-shrink:0"></div>
+      <div style="flex:1;position:relative;height:14px;font-size:10px;font-weight:600;color:var(--muted)">{tick_spans}</div>
     </div>"""
         top_section = ga4_rows[0]["section"]
-        top_sub = f"{int(ga4_rows[0]['avg_seconds'])}s"
+        top_sub = f"{_fmt_sec_short(ga4_rows[0]['avg_seconds'])} · {fmt_num(ga4_rows[0]['events'])} sessões"
         total_events = sum(r["events"] for r in ga4_rows)
 
     cards = kcard("Seções Rastreadas", str(len(ga4_rows)), "últimos 30 dias", vid="gaSecoes")
     cards += kcard("Maior Tempo Médio", top_section, top_sub, "gold", vid="gaTopSecao")
-    cards += kcard("Eventos section_time", fmt_num(total_events), "últimos 30 dias", vid="gaEventos")
+    cards += kcard("Sessões section_time", fmt_num(total_events), "últimos 30 dias", vid="gaEventos")
 
     return f"""
 <div id="page-comportamento" class="page">
+
 <div class="page-inner">
   <div class="sec-title"><h3>👀 Comportamento no Site</h3><div class="sec-line"></div></div>
   <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Tempo médio de permanência por seção da página, via GA4 (evento <code>section_time</code>).</p>
@@ -1487,7 +1502,10 @@ def page_comportamento_site(ga4_rows):
 
   <div class="kpi-grid kpi-grid-3">{cards}</div>
   <div class="sec-title" style="margin-top:28px"><h3>⏱️ Tempo Médio por Seção</h3><div class="sec-line"></div></div>
-  <div class="chart-card"><div class="hbar-list" id="gaHbarList">{hbars_html}</div></div>
+  <div class="chart-card">
+    <div id="gaAxis">{axis_html}</div>
+    <div class="hbar-list" id="gaHbarList">{hbars_html}</div>
+  </div>
 
   <div class="sec-title" style="margin-top:36px"><h3>⚖️ Comparar Dois Períodos</h3><div class="sec-line"></div></div>
   <div class="chart-row" style="grid-template-columns:1fr">
@@ -2130,8 +2148,10 @@ def render(account, meta, g, ga4_daily=None):
 
   function renderSectionBarsG(rows) {{
     const listEl = document.getElementById('gaHbarList');
+    const axisEl = document.getElementById('gaAxis');
     if (!rows.length) {{
       listEl.innerHTML = '<p style="color:var(--muted)">Sem dados de comportamento no período selecionado.</p>';
+      axisEl.innerHTML = '';
       setTextG('gaSecoes', '0');
       setTextG('gaTopSecao', '—');
       setTextG('gaTopSecao-d', '');
@@ -2139,19 +2159,26 @@ def render(account, meta, g, ga4_daily=None):
       return;
     }}
     const maxAvg = Math.max(...rows.map(r => r.avg)) || 1;
+
+    let axisHtml = '<div style="display:flex;margin-bottom:8px"><div style="width:130px;flex-shrink:0"></div>' +
+      '<div style="flex:1;position:relative;height:14px;font-size:10px;font-weight:600;color:var(--muted)">';
+    [0.25, 0.5, 0.75, 1.0].forEach(t => {{
+      axisHtml += '<span style="position:absolute;left:' + Math.round(t * 100) + '%;transform:translateX(-50%)">' + fmtSecG(maxAvg * t) + '</span>';
+    }});
+    axisHtml += '</div></div>';
+    axisEl.innerHTML = axisHtml;
+
     let html = '';
     rows.forEach(r => {{
       const pct = Math.max(Math.round(r.avg / maxAvg * 100), 8);
-      const evTxt = r.events + (r.events === 1 ? ' evento' : ' eventos');
-      html += '<div class="hbar-item"><div class="hbar-label" style="white-space:normal;overflow:visible;text-overflow:clip;line-height:1.3">' + r.section +
-        '<br><span style="font-size:9px;color:var(--dim)">' + evTxt + '</span></div>' +
-        '<div class="hbar-track"><div class="hbar-fill" style="width:' + pct + '%"><span class="hbar-val">' + fmtSecG(r.avg) + '</span></div></div></div>';
+      html += '<div class="hbar-item"><div class="hbar-label">' + r.section + '</div>' +
+        '<div class="hbar-track"><div class="hbar-fill" style="width:' + pct + '%"><span class="hbar-val">' + fmtNumG(r.events) + '</span></div></div></div>';
     }});
     listEl.innerHTML = html;
 
     setTextG('gaSecoes', String(rows.length));
     setTextG('gaTopSecao', rows[0].section);
-    setTextG('gaTopSecao-d', fmtSecG(rows[0].avg));
+    setTextG('gaTopSecao-d', fmtSecG(rows[0].avg) + ' · ' + fmtNumG(rows[0].events) + ' sessões');
     const totalEvents = rows.reduce((s, r) => s + r.events, 0);
     setTextG('gaEventos', fmtNumG(totalEvents));
   }}
@@ -2212,9 +2239,9 @@ def render(account, meta, g, ga4_daily=None):
       '<tr style="border-bottom:1px solid var(--border)">' +
       '<th style="text-align:left;padding:8px 6px;color:var(--dim);font-weight:600">Seção</th>' +
       '<th style="text-align:right;padding:8px 6px;color:var(--gold);font-weight:700">Tempo A</th>' +
-      '<th style="text-align:right;padding:8px 6px;color:var(--gold);font-weight:700;opacity:.7">Qtd A</th>' +
+      '<th style="text-align:right;padding:8px 6px;color:var(--gold);font-weight:700;opacity:.7">Sessões A</th>' +
       '<th style="text-align:right;padding:8px 6px;color:#888;font-weight:700">Tempo B</th>' +
-      '<th style="text-align:right;padding:8px 6px;color:#888;font-weight:700;opacity:.7">Qtd B</th></tr>';
+      '<th style="text-align:right;padding:8px 6px;color:#888;font-weight:700;opacity:.7">Sessões B</th></tr>';
     rows.forEach(r => {{
       html += '<tr style="border-bottom:1px solid var(--border)">' +
         '<td style="padding:7px 6px;color:var(--muted)">' + r[0] + '</td>' +
