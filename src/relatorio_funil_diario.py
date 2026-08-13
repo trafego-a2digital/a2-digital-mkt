@@ -37,6 +37,13 @@ CONTAS = {
     "892752402026712": "CONFIDEFE 11",
 }
 
+# Contas onde o landing_page_view padrão vem duplicado (ex: mesmo pixel disparando
+# também num checkout de terceiros) usam aqui uma conversão personalizada já
+# isolada (regra de URL) no lugar do action_type padrão.
+LPV_ACTION_OVERRIDE = {
+    "1123910629201094": "offsite_conversion.custom.916080411535820",  # 16CIF — "LP View - 16 cif"
+}
+
 EMOJI_CONTA = "🏥"
 
 
@@ -54,6 +61,7 @@ def busca_metricas_funil_d1(account_id: str) -> dict:
     """Busca as métricas de funil de D-1 (dia anterior) para uma conta via Graph API."""
     ontem = date.today() - timedelta(days=1)
     data_str = ontem.strftime("%Y-%m-%d")
+    lpv_action = LPV_ACTION_OVERRIDE.get(account_id, "landing_page_view")
 
     params = {
         "access_token": META_ACCESS_TOKEN,
@@ -86,7 +94,7 @@ def busca_metricas_funil_d1(account_id: str) -> dict:
         "spend": float(row.get("spend", 0)),
         "impressions": int(row.get("impressions", 0)),
         "link_clicks": _extrai_action(actions, "link_click"),
-        "pageviews": _extrai_action(actions, "landing_page_view"),
+        "pageviews": _extrai_action(actions, lpv_action),
         "add_to_cart": _extrai_action(actions, "omni_add_to_cart"),
         "initiate_checkout": _extrai_action(actions, "omni_initiated_checkout"),
         "purchases": _extrai_action(actions, "omni_purchase"),
