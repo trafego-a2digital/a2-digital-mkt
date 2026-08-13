@@ -198,6 +198,12 @@ def fetch_meta(account):
     acts = ins.get("actions", [])
     avs  = ins.get("action_values", [])
 
+    # Algumas contas têm o PageView duplicado por um checkout de terceiros
+    # (mesmo pixel disparando em outro domínio) — nesse caso, a conta tem um
+    # "lpv_action_override" no DASHBOARD_ACCOUNTS apontando pra uma conversão
+    # personalizada já isolada (ex: regra de URL) em vez do landing_page_view padrão.
+    lpv_action = account.get("lpv_action_override", "landing_page_view")
+
     metrics = {
         "spend":       float(ins.get("spend", 0)),
         "reach":       int(float(ins.get("reach", 0))),
@@ -208,7 +214,7 @@ def fetch_meta(account):
         "cpm":         float(ins.get("cpm", 0)),
         "results":     extract_action(acts, result_event),
         "msgs":        extract_action(acts, MSG_EVENT),
-        "lpv":         extract_action(acts, "landing_page_view"),
+        "lpv":         extract_action(acts, lpv_action),
         "add_to_cart": extract_action(acts, "omni_add_to_cart"),
         "initiate_checkout": extract_action(acts, "omni_initiated_checkout"),
         "purchases":   extract_action(acts, "purchase"),
@@ -250,7 +256,7 @@ def fetch_meta(account):
             "v": round(extract_action_value(avs_d, "purchase"), 2),
             "c": int(float(d.get("clicks", 0))),
             "i": int(float(d.get("impressions", 0))),
-            "lpv": extract_action(acts_d, "landing_page_view"),
+            "lpv": extract_action(acts_d, lpv_action),
             "atc": extract_action(acts_d, "omni_add_to_cart"),
             "ic": extract_action(acts_d, "omni_initiated_checkout"),
         })
