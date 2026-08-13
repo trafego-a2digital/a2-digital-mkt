@@ -32,6 +32,125 @@ if _ga4_raw:
         print(f"  ⚠ Não foi possível carregar credencial GA4: {e}", file=sys.stderr)
 
 LOGO_B64 = ""
+
+# ════════════════════════════════════════════════════════════════════
+# MAPEAMENTO DE SEÇÕES — ordem cronológica (como aparece no site) e nome
+# amigável para exibição, por conta (chave = slug em DASHBOARD_ACCOUNTS).
+# Reconstruído a partir dos scripts de rastreamento (section_time) já
+# publicados em cada site. Contas sem entrada aqui caem no fallback:
+# ordenação por tempo (mediana) e nome cru (raw) do GA4.
+# ════════════════════════════════════════════════════════════════════
+SECTION_MAP = {
+    "cif": [
+        ("Hero", "Abertura (Hero)"),
+        ("Diferenciais", "Diferenciais"),
+        ("Para Quem e o CIF", "Para Quem É o CIF"),
+        ("Sobre o Congresso", "Sobre o Congresso"),
+        ("Palestrantes", "Palestrantes"),
+        ("Programacao", "Programação"),
+        ("Beneficios", "Benefícios"),
+        ("Ingressos - Chamada", "Ingressos — Chamada"),
+        ("Ingressos - Tabela de Precos", "Ingressos — Tabela de Preços"),
+        ("Local do Evento", "Local do Evento"),
+        ("Submissao de Trabalho Cientifico", "Submissão de Trabalho Científico"),
+        ("FAQ", "Perguntas Frequentes (FAQ)"),
+    ],
+    "interpilates": [
+        ("barra_contador", "Barra de Desconto"),
+        ("hero", "Abertura (Hero)"),
+        ("pilates_evoluindo", "O Pilates Está Evoluindo"),
+        ("beneficios", "O Que Você Leva do Interpilates"),
+        ("para_quem_e", "Para Quem É o Interpilates"),
+        ("alem_do_congresso", "Muito Além de um Congresso"),
+        ("referencias_intro", "Aprenda com Quem É Referência"),
+        ("carrossel_palestrantes", "Palestrantes"),
+        ("local_data", "Local e Data"),
+        ("expo_inovacao", "Expo — Onde o Pilates Encontra Inovação"),
+        ("ingressos", "Ingressos"),
+        ("faq", "Perguntas Frequentes (FAQ)"),
+        ("cta_final", "Chamada Final"),
+    ],
+    "interfito": [
+        ("hero", "Abertura (Hero)"),
+        ("numeros", "Números do Evento"),
+        ("sobre", "Sobre o Congresso"),
+        ("diferenciais", "Diferenciais"),
+        ("programacao", "Programação"),
+        ("submissao_trabalhos", "Submissão de Trabalhos"),
+        ("ingressos", "Ingressos"),
+        ("local_evento", "Local do Evento"),
+        ("cta_final", "Chamada Final"),
+    ],
+    "conific": [
+        ("barra-desconto", "Barra de Desconto"),
+        ("hero", "Abertura (Hero)"),
+        ("estatisticas", "Estatísticas"),
+        ("publico-alvo", "Público-Alvo"),
+        ("cta-diferenca", "Diferença na Carreira (CTA)"),
+        ("evento-completo", "Um Evento Completo"),
+        ("palestrantes", "Palestrantes"),
+        ("submissao-trabalhos", "Submissão de Trabalhos"),
+        ("programacao", "Programação"),
+        ("ingresso", "Ingressos"),
+        ("local-evento", "Local do Evento"),
+        ("por-que-participar", "Por Que Participar?"),
+        ("footer", "Rodapé"),
+    ],
+    "consulfisio": [
+        ("hero", "Abertura (Hero)"),
+        ("por_que_participar", "Por Que Participar?"),
+        ("programacao", "Programação"),
+        ("palestrantes", "Palestrantes"),
+        ("sobre", "Sobre o Congresso"),
+        ("promocao_lancamento", "Promoção de Lançamento"),
+        ("ingressos", "Ingressos"),
+        ("submissao_trabalhos", "Submissão de Trabalhos"),
+        ("local_evento", "Local do Evento"),
+        ("faq", "Perguntas Frequentes (FAQ)"),
+        ("rodape", "Rodapé"),
+    ],
+    "cbfd": [
+        ("topo", "Abertura (Topo)"),
+        ("beneficios", "Diagnóstico, Tratamentos e Aplicação"),
+        ("palestrantes", "Palestrantes"),
+        ("dor-nao-e-simples", "A Dor Não É Algo Simples"),
+        ("ciencia-aplicada", "Ciência Aplicada, Prática Clínica"),
+        ("ingresso", "Ingressos"),
+        ("submissao-trabalho", "Submissão de Trabalho Científico"),
+        ("estrutura-evento", "Estrutura do Evento"),
+        ("faq", "Perguntas Frequentes (FAQ)"),
+        ("footer", "Rodapé"),
+    ],
+    "cardio": [
+        ("barra-desconto", "Barra de Desconto"),
+        ("hero", "Abertura (Hero)"),
+        ("programacao", "Programação"),
+        ("palestrantes-intro", "Palestrantes — Introdução"),
+        ("palestrantes-carrossel", "Palestrantes — Carrossel"),
+        ("fisioterapia-evolui", "A Fisioterapia Evolui"),
+        ("por-que-participar", "Por Que Participar?"),
+        ("para-quem", "Para Quem É o Evento"),
+        ("congresso-internacional", "Congresso Internacional"),
+        ("submissao-trabalhos", "Submissão de Trabalhos"),
+        ("o-que-voce-leva", "O Que Você Leva desta Experiência"),
+        ("ingresso", "Ingressos"),
+        ("local-evento", "Local do Evento"),
+        ("faq", "Perguntas Frequentes (FAQ)"),
+        ("footer", "Rodapé"),
+    ],
+    # "injetaveis": pendente — mapeamento de seções ainda não disponível
+}
+
+
+def _section_lookup(slug):
+    """Retorna dict {nome_cru_lower: (ordem, nome_amigavel)} para uma conta,
+    ou None se a conta não tiver mapeamento (cai no fallback por tempo)."""
+    entries = SECTION_MAP.get(slug)
+    if not entries:
+        return None
+    return {raw.lower(): (i, friendly) for i, (raw, friendly) in enumerate(entries)}
+
+
 logo_path = Path("assets/logo_a2.png")
 if logo_path.exists():
     with open(logo_path, "rb") as f:
@@ -272,10 +391,11 @@ def fetch_google(account):
 # GA4 — TEMPO POR SEÇÃO (evento section_time)
 # ════════════════════════════════════════════════════════════════════
 
-def fetch_ga4_section_daily(property_id, days=180):
-    """Busca o detalhamento diário por seção (evento section_time, dimensão section_name,
-    métrica time_seconds) numa propriedade GA4, nos últimos `days` dias — granularidade
-    diária pra alimentar o filtro de período dinâmico no dashboard."""
+def fetch_ga4_section_daily(property_id, days=120):
+    """Busca o tempo por seção, por sessão (evento section_time, dimensões section_name +
+    ID de sessão), nos últimos `days` dias. Cada linha retornada é uma sessão única —
+    isso permite calcular mediana (mais robusta a sessões outlier, ex.: aba parada em
+    segundo plano) em vez de média, e ainda alimenta o filtro de período dinâmico."""
     if not GA4_CREDENTIALS:
         return None
 
@@ -291,8 +411,9 @@ def fetch_ga4_section_daily(property_id, days=180):
     request = RunReportRequest(
         property=f"properties/{property_id}",
         date_ranges=[DateRange(start_date=start, end_date=end)],
-        dimensions=[Dimension(name="date"), Dimension(name="customEvent:section_name")],
-        metrics=[Metric(name="eventCount"), Metric(name="customEvent:time_seconds")],
+        dimensions=[Dimension(name="date"), Dimension(name="customEvent:section_name"),
+                    Dimension(name="customEvent:a2_sessao_id")],
+        metrics=[Metric(name="customEvent:time_seconds")],
         dimension_filter=FilterExpression(
             filter=Filter(field_name="eventName",
                           string_filter=Filter.StringFilter(value="section_time"))),
@@ -305,27 +426,56 @@ def fetch_ga4_section_daily(property_id, days=180):
         d_raw = row.dimension_values[0].value  # formato YYYYMMDD
         d = f"{d_raw[0:4]}-{d_raw[4:6]}-{d_raw[6:8]}"
         section = row.dimension_values[1].value or "(sem nome)"
-        count = int(float(row.metric_values[0].value or 0))
-        total = float(row.metric_values[1].value or 0)
-        rows.append({"d": d, "s": section, "c": count, "t": round(total, 1)})
+        # dimension_values[2] é o ID de sessão — só serve pra garantir que cada linha
+        # já vem desduplicada por sessão; não precisamos guardá-lo
+        t = float(row.metric_values[0].value or 0)
+        rows.append({"d": d, "s": section, "t": round(t, 1)})
     return rows
 
 
-def aggregate_section_rows(daily_rows, days=30):
-    """Agrupa o detalhamento diário num snapshot (últimos `days` dias) — usado
-    pra renderizar o estado inicial da página, antes do filtro JS assumir."""
+def _median(values):
+    if not values:
+        return 0.0
+    s = sorted(values)
+    n = len(s)
+    mid = n // 2
+    if n % 2 == 0:
+        return (s[mid - 1] + s[mid]) / 2
+    return s[mid]
+
+
+def aggregate_section_rows(daily_rows, days=30, slug=None):
+    """Agrupa o detalhamento por sessão num snapshot (últimos `days` dias) — usado
+    pra renderizar o estado inicial da página, antes do filtro JS assumir. Usa mediana
+    em vez de média, pra não ser distorcido por sessões outlier.
+
+    Quando a conta tem mapeamento em SECTION_MAP, as seções saem com nome amigável
+    e na ordem cronológica do site; senão caem no fallback (nome cru, ordenado
+    por tempo típico decrescente)."""
     today = datetime.date.today()
     start = (today - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
     end   = (today - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
     acc = {}
     for row in daily_rows or []:
         if start <= row["d"] <= end:
-            a = acc.setdefault(row["s"], {"c": 0, "t": 0.0})
-            a["c"] += row["c"]
-            a["t"] += row["t"]
-    rows = [{"section": s, "avg_seconds": round(sdiv(v["t"], v["c"]), 1), "events": v["c"]}
-            for s, v in acc.items()]
-    rows.sort(key=lambda r: r["avg_seconds"], reverse=True)
+            acc.setdefault(row["s"], []).append(row["t"])
+
+    lookup = _section_lookup(slug) if slug else None
+    rows = []
+    for s, vals in acc.items():
+        if lookup and s.lower() in lookup:
+            order, label = lookup[s.lower()]
+        else:
+            order, label = 9999, s  # desconhecida: nome cru, vai pro fim
+        rows.append({"section": label, "avg_seconds": round(_median(vals), 1),
+                     "events": len(vals), "_order": order})
+
+    if lookup:
+        rows.sort(key=lambda r: r["_order"])
+    else:
+        rows.sort(key=lambda r: r["avg_seconds"], reverse=True)
+    for r in rows:
+        del r["_order"]
     return rows
 
 
@@ -1436,11 +1586,10 @@ def _fmt_sec_short(v):
 
 
 def page_comportamento_site(ga4_rows):
-    """Tempo médio por seção da página (evento GA4 section_time) — com filtro
-    de período e comparação entre dois períodos, alimentados via JS a partir
-    do histórico diário (GA4_DAILY). A barra é dimensionada pelo tempo médio,
-    mas o número em destaque dentro dela é a quantidade de eventos; o tempo
-    fica como régua de referência no topo."""
+    """Tempo típico (mediana) por seção da página (evento GA4 section_time) — com
+    filtro de período e comparação entre dois períodos, alimentados via JS a partir
+    do histórico diário (GA4_DAILY). A barra representa o tempo (com régua no topo
+    pra referência), e a quantidade de sessões aparece como badge à direita."""
     if not ga4_rows:
         hbars_html = '<p style="color:var(--muted)">Sem dados de comportamento no período — verifique se o evento <code>section_time</code> está disparando no site.</p>'
         axis_html = ""
@@ -1451,10 +1600,10 @@ def page_comportamento_site(ga4_rows):
         hbars_html = ""
         for r in ga4_rows:
             pct = int(sdiv(r["avg_seconds"], max_avg) * 100)
-            events_txt = fmt_num(r["events"])
-            hbars_html += f"""<div class="hbar-item">
+            hbars_html += f"""<div class="hbar-item" style="display:flex;align-items:center;gap:10px">
       <div class="hbar-label">{r["section"]}</div>
-      <div class="hbar-track"><div class="hbar-fill" style="width:{max(pct,8)}%"><span class="hbar-val">{events_txt}</span></div></div>
+      <div class="hbar-track" style="flex:1"><div class="hbar-fill" style="width:{max(pct,8)}%"><span class="hbar-val">{_fmt_sec_short(r["avg_seconds"])}</span></div></div>
+      <div style="min-width:92px;text-align:right;font-size:12px;font-weight:700;color:var(--gold);white-space:nowrap">{fmt_num(r["events"])} <span style="font-size:9px;color:var(--dim);font-weight:600">sessões</span></div>
     </div>"""
         ticks = [0.25, 0.5, 0.75, 1.0]
         tick_spans = "".join(
@@ -1463,13 +1612,14 @@ def page_comportamento_site(ga4_rows):
         axis_html = f"""<div style="display:flex;margin-bottom:8px">
       <div style="width:130px;flex-shrink:0"></div>
       <div style="flex:1;position:relative;height:14px;font-size:10px;font-weight:600;color:var(--muted)">{tick_spans}</div>
+      <div style="min-width:92px;flex-shrink:0"></div>
     </div>"""
         top_section = ga4_rows[0]["section"]
         top_sub = f"{_fmt_sec_short(ga4_rows[0]['avg_seconds'])} · {fmt_num(ga4_rows[0]['events'])} sessões"
         total_events = sum(r["events"] for r in ga4_rows)
 
     cards = kcard("Seções Rastreadas", str(len(ga4_rows)), "últimos 30 dias", vid="gaSecoes")
-    cards += kcard("Maior Tempo Médio", top_section, top_sub, "gold", vid="gaTopSecao")
+    cards += kcard("Maior Tempo Típico (mediana)", top_section, top_sub, "gold", vid="gaTopSecao")
     cards += kcard("Sessões section_time", fmt_num(total_events), "últimos 30 dias", vid="gaEventos")
 
     return f"""
@@ -1477,7 +1627,7 @@ def page_comportamento_site(ga4_rows):
 
 <div class="page-inner">
   <div class="sec-title"><h3>👀 Comportamento no Site</h3><div class="sec-line"></div></div>
-  <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Tempo médio de permanência por seção da página, via GA4 (evento <code>section_time</code>).</p>
+  <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Tempo típico de permanência por seção da página (mediana entre sessões, pra não ser distorcido por abas paradas em segundo plano), via GA4 (evento <code>section_time</code>).</p>
 
   <div class="period-bar-inline">
     <span class="period-label">Período</span>
@@ -1501,7 +1651,7 @@ def page_comportamento_site(ga4_rows):
   <div id="periodTagG" style="font-size:11px;color:var(--dim);margin:-14px 0 20px 2px">· últimos 30 dias</div>
 
   <div class="kpi-grid kpi-grid-3">{cards}</div>
-  <div class="sec-title" style="margin-top:28px"><h3>⏱️ Tempo Médio por Seção</h3><div class="sec-line"></div></div>
+  <div class="sec-title" style="margin-top:28px"><h3>⏱️ Tempo Típico por Seção (mediana)</h3><div class="sec-line"></div></div>
   <div class="chart-card">
     <div id="gaAxis">{axis_html}</div>
     <div class="hbar-list" id="gaHbarList">{hbars_html}</div>
@@ -1534,7 +1684,7 @@ def page_comportamento_site(ga4_rows):
 # ════════════════════════════════════════════════════════════════════
 
 def render(account, meta, g, ga4_daily=None):
-    ga4_rows = aggregate_section_rows(ga4_daily, 30) if ga4_daily is not None else None
+    ga4_rows = aggregate_section_rows(ga4_daily, 30, account.get("slug")) if ga4_daily is not None else None
     name = account["name"]
     has_meta = meta is not None
     has_goog = g is not None
@@ -2119,26 +2269,46 @@ def render(account, meta, g, ga4_daily=None):
 """
 
     if ga4_daily is not None:
+        section_map_entries = SECTION_MAP.get(account.get("slug"), [])
         js += f"""
   // ════ COMPORTAMENTO NO SITE — GA4 (section_time) ════
   const GA4_DAILY = {json.dumps(ga4_daily)};
+  const GA4_SECTION_MAP = {json.dumps(section_map_entries, ensure_ascii=False)};
+  const GA4_SECTION_LOOKUP = {{}};
+  GA4_SECTION_MAP.forEach(([raw, friendly], i) => {{ GA4_SECTION_LOOKUP[raw.toLowerCase()] = [i, friendly]; }});
 
   function fmtNumG(v) {{ return Math.round(v).toLocaleString('pt-BR'); }}
   function setTextG(id, txt) {{ const el = document.getElementById(id); if (el) el.textContent = txt; }}
   function dstrG(d) {{ return d.toISOString().slice(0, 10); }}
 
+  function medianG(values) {{
+    if (!values.length) return 0;
+    const s = values.slice().sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
+  }}
+
   function sumSectionRangeG(from, to) {{
     const acc = {{}};
     for (const row of GA4_DAILY) {{
       if (row.d >= from && row.d <= to) {{
-        if (!acc[row.s]) acc[row.s] = {{ c: 0, t: 0 }};
-        acc[row.s].c += row.c;
-        acc[row.s].t += row.t;
+        if (!acc[row.s]) acc[row.s] = [];
+        acc[row.s].push(row.t);
       }}
     }}
-    return Object.entries(acc)
-      .map(([s, v]) => ({{ section: s, avg: v.c ? v.t / v.c : 0, events: v.c }}))
-      .sort((a, b) => b.avg - a.avg);
+    const hasMap = GA4_SECTION_MAP.length > 0;
+    const rows = Object.entries(acc).map(([s, vals]) => {{
+      const found = GA4_SECTION_LOOKUP[s.toLowerCase()];
+      return {{
+        section: found ? found[1] : s,
+        order: found ? found[0] : 9999,
+        avg: medianG(vals),
+        events: vals.length,
+      }};
+    }});
+    if (hasMap) rows.sort((a, b) => a.order - b.order);
+    else rows.sort((a, b) => b.avg - a.avg);
+    return rows;
   }}
 
   function fmtSecG(avg) {{
@@ -2165,14 +2335,15 @@ def render(account, meta, g, ga4_daily=None):
     [0.25, 0.5, 0.75, 1.0].forEach(t => {{
       axisHtml += '<span style="position:absolute;left:' + Math.round(t * 100) + '%;transform:translateX(-50%)">' + fmtSecG(maxAvg * t) + '</span>';
     }});
-    axisHtml += '</div></div>';
+    axisHtml += '</div><div style="min-width:92px;flex-shrink:0"></div></div>';
     axisEl.innerHTML = axisHtml;
 
     let html = '';
     rows.forEach(r => {{
       const pct = Math.max(Math.round(r.avg / maxAvg * 100), 8);
-      html += '<div class="hbar-item"><div class="hbar-label">' + r.section + '</div>' +
-        '<div class="hbar-track"><div class="hbar-fill" style="width:' + pct + '%"><span class="hbar-val">' + fmtNumG(r.events) + '</span></div></div></div>';
+      html += '<div class="hbar-item" style="display:flex;align-items:center;gap:10px"><div class="hbar-label">' + r.section + '</div>' +
+        '<div class="hbar-track" style="flex:1"><div class="hbar-fill" style="width:' + pct + '%"><span class="hbar-val">' + fmtSecG(r.avg) + '</span></div></div>' +
+        '<div style="min-width:92px;text-align:right;font-size:12px;font-weight:700;color:var(--gold);white-space:nowrap">' + fmtNumG(r.events) + ' <span style="font-size:9px;color:var(--dim);font-weight:600">sessões</span></div></div>';
     }});
     listEl.innerHTML = html;
 
