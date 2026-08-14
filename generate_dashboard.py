@@ -9,7 +9,7 @@ Secrets necessários:
   GA4_SERVICE_ACCOUNT_JSON (opcional — habilita a aba "Comportamento no site")
 """
 
-import os, json, sys, base64, datetime, requests
+import os, json, sys, re, base64, datetime, requests
 from pathlib import Path
 
 TOKEN    = os.environ.get("META_ACCESS_TOKEN", "")
@@ -397,11 +397,17 @@ def fetch_google(account):
 # GA4 — TEMPO POR SEÇÃO (evento section_time)
 # ════════════════════════════════════════════════════════════════════
 
-def fetch_ga4_section_daily(property_id, days=120):
+def fetch_ga4_section_daily(property_id, days=120, session_dim="customEvent:a2_sessao_id"):
     """Busca o tempo por seção, por sessão (evento section_time, dimensões section_name +
     ID de sessão), nos últimos `days` dias. Cada linha retornada é uma sessão única —
     isso permite calcular mediana (mais robusta a sessões outlier, ex.: aba parada em
-    segundo plano) em vez de média, e ainda alimenta o filtro de período dinâmico."""
+    segundo plano) em vez de média, e ainda alimenta o filtro de período dinâmico.
+
+    Algumas propriedades podem ter a dimensão de sessão cadastrada com um nome
+    ligeiramente diferente (ex: a2_session_id em vez de a2_sessao_id, por
+    inconsistência no cadastro manual em cada conta). Se a API rejeitar o nome e
+    sugerir outro ("Did you mean X?"), tenta de novo automaticamente com o nome
+    sugerido antes de desistir."""
     if not GA4_CREDENTIALS:
         return None
 
@@ -414,18 +420,31 @@ def fetch_ga4_section_daily(property_id, days=120):
     start = (today - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
     end   = (today - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
-    request = RunReportRequest(
-        property=f"properties/{property_id}",
-        date_ranges=[DateRange(start_date=start, end_date=end)],
-        dimensions=[Dimension(name="date"), Dimension(name="customEvent:section_name"),
-                    Dimension(name="customEvent:a2_sessao_id")],
-        metrics=[Metric(name="customEvent:time_seconds")],
-        dimension_filter=FilterExpression(
-            filter=Filter(field_name="eventName",
-                          string_filter=Filter.StringFilter(value="section_time"))),
-        limit=100000,
-    )
-    resp = client.run_report(request)
+    def _build_request(session_dim_name):
+        return RunReportRequest(
+            property=f"properties/{property_id}",
+            date_ranges=[DateRange(start_date=start, end_date=end)],
+            dimensions=[Dimension(name="date"), Dimension(name="customEvent:section_name"),
+                        Dimension(name=session_dim_name)],
+            metrics=[Metric(name="customEvent:time_seconds")],
+            dimension_filter=FilterExpression(
+                filter=Filter(field_name="eventName",
+                              string_filter=Filter.StringFilter(value="section_time"))),
+            limit=100000,
+        )
+
+    try:
+        resp = client.run_report(_build_request(session_dim))
+    except Exception as e:
+        msg = str(e)
+        m = re.search(r"Did you mean (customEvent:[a-zA-Z0-9_]+)\?", msg)
+        if m and "a2_sess" in msg:
+            nome_sugerido = m.group(1)
+            print(f"  ⚠ Dimensão de sessão '{session_dim}' inválida — tentando "
+                  f"'{nome_sugerido}' (sugestão da API)", file=sys.stderr)
+            resp = client.run_report(_build_request(nome_sugerido))
+        else:
+            raise
 
     rows = []
     for row in resp.rows:
