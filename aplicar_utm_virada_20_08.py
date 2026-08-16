@@ -128,7 +128,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    access_token = os.environ.get("FB_ACCESS_TOKEN")
+    access_token = os.environ.get("META_ACCESS_TOKEN")
     if not access_token and not args.dry_run:
         print("Erro: defina a variavel de ambiente FB_ACCESS_TOKEN (ou use --dry-run).", file=sys.stderr)
         return 1
