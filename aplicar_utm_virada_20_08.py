@@ -11,11 +11,11 @@ A UTM ja vem fixa no codigo (constante UTM_STRING logo abaixo). Nao precisa
 passar --utm na linha de comando a menos que queira usar outra, pontualmente.
 
 Uso:
-    export FB_ACCESS_TOKEN="seu_token_de_system_user"
+    export META_ACCESS_TOKEN="seu_token_de_system_user"
     python aplicar_utm_virada_20_08.py --dry-run
     python aplicar_utm_virada_20_08.py
 
-No GitHub Actions, passe o token como secret (ex: secrets.FB_ACCESS_TOKEN).
+No GitHub Actions, passe o token como secret (ex: secrets.META_ACCESS_TOKEN).
 Nao ha necessidade de passar a UTM como input do workflow, ja que ela esta
 fixa no codigo - isso tambem evita qualquer conflito entre os macros {{ }}
 da UTM e a sintaxe de interpolacao ${{ }} do proprio GitHub Actions.
@@ -130,7 +130,7 @@ def main() -> int:
 
     access_token = os.environ.get("META_ACCESS_TOKEN")
     if not access_token and not args.dry_run:
-        print("Erro: defina a variavel de ambiente FB_ACCESS_TOKEN (ou use --dry-run).", file=sys.stderr)
+        print("Erro: defina a variavel de ambiente META_ACCESS_TOKEN (ou use --dry-run).", file=sys.stderr)
         return 1
 
     ok_count = 0
