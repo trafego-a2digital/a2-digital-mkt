@@ -27,7 +27,7 @@ jobs:
         if: ${{ inputs.dry_run == true }}
         run: python aplicar_utm_virada_20_08.py --dry-run
         env:
-          FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
 
       - name: Rodar script (aplicar de verdade)
         if: ${{ inputs.dry_run == false }}
