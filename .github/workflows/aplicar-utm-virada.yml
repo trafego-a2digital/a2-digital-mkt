@@ -1,0 +1,36 @@
+name: Aplicar UTM - Virada 20.08 (16CIF)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Rodar em modo teste (não aplica de verdade)"
+        type: boolean
+        default: true
+
+jobs:
+  aplicar-utm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: pip install requests
+
+      - name: Rodar script (dry-run)
+        if: ${{ inputs.dry_run == true }}
+        run: python aplicar_utm_virada_20_08.py --dry-run
+        env:
+          FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
+
+      - name: Rodar script (aplicar de verdade)
+        if: ${{ inputs.dry_run == false }}
+        run: python aplicar_utm_virada_20_08.py
+        env:
+          FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
