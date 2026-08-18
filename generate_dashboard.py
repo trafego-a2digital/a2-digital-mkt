@@ -231,7 +231,7 @@ def fetch_meta(account):
 
     daily = []
     params = {"time_range": tr180, "time_increment": 1, "limit": 500,
-              "fields": "spend,date_start,actions,action_values,clicks,impressions",
+              "fields": "spend,date_start,actions,action_values,clicks,impressions,reach",
               "level": "account", "access_token": TOKEN}
     url = f"{BASE_URL}/{acc_id}/insights"
     while url:
@@ -259,6 +259,7 @@ def fetch_meta(account):
             "lpv": extract_action(acts_d, lpv_action),
             "atc": extract_action(acts_d, "omni_add_to_cart"),
             "ic": extract_action(acts_d, "omni_initiated_checkout"),
+            "rc": int(float(d.get("reach", 0))),
         })
 
     # Busca campanhas com insights 30d
@@ -749,7 +750,7 @@ def kcard(label, value, sub, color="", delta_cls="neutral", vid=""):
     </div>"""
 
 
-def funnel_html(stages, conversions, platform, funnel_title, metrics_rows):
+def funnel_html(stages, conversions, platform, funnel_title, metrics_rows, platform_label=None):
     """stages: [(label, value, sub)] ou [(label, value, sub, (val_id, sub_id))].
     conversions: [(pct_label, desc)] ou [(pct_label, desc, conv_id)] entre etapas.
     metrics_rows: [(etapa, [(val, lbl, cls)] ou [(val, lbl, cls, id)])].
@@ -764,13 +765,14 @@ def funnel_html(stages, conversions, platform, funnel_title, metrics_rows):
         ("linear-gradient(135deg,#14b8a6,#0f766e)", "polygon(2% 0%,98% 0%,100% 100%,0% 100%)", "35%"),
     ]
     plat_cls = "funil-plat-meta" if platform == "meta" else "funil-plat-google"
-    plat_txt = "● Meta Ads" if platform == "meta" else "● Google Ads"
+    plat_txt = platform_label or ("● Meta Ads" if platform == "meta" else "● Google Ads")
 
     body = ""
     for i, stage in enumerate(stages):
         label, value, sub = stage[0], stage[1], stage[2]
         val_id, sub_id = stage[3] if len(stage) > 3 and stage[3] else (None, None)
-        bg, clip, width = colors[min(i, len(colors)-1)]
+        bg, clip, _ = colors[i % len(colors)]
+        width = colors[min(i, len(colors)-1)][2]
         id_val_attr = f' id="{val_id}"' if val_id else ""
         id_sub_attr = f' id="{sub_id}"' if sub_id else ""
         body += f"""
@@ -840,7 +842,7 @@ def build_meta_funnel(account, m):
         taxa_finalizacao = sdiv(m["purchases"], m["initiate_checkout"]) * 100
 
         stages = [
-            ("Alcance", fmt_num(m["reach"]), "pessoas únicas · 30d fixo"),
+            ("Alcance", fmt_num(m["reach"]), "pessoas únicas (aprox.)", ("pfStageReachVal", "pfStageReachSub")),
             ("Cliques no Link", fmt_num(m["clicks"]), f"CTR {fmt_pct(m['ctr'])}", ("pfStageClicksVal", "pfStageClicksSub")),
             ("Visualização da Página", fmt_num(m["lpv"]), "página de compra", ("pfStageLpvVal", None)),
             ("Add to Cart", fmt_num(m["add_to_cart"]), "adicionaram ao carrinho", ("pfStageAtcVal", None)),
@@ -848,14 +850,14 @@ def build_meta_funnel(account, m):
             ("Compras", fmt_num(m["purchases"]), f"receita {fmt_brl(m['revenue'])}", ("pfStageComprasVal", "pfStageComprasSub")),
         ]
         convs = [
-            (fmt_pct(sdiv(m["clicks"], m["reach"]) * 100), "clicaram"),
+            (fmt_pct(sdiv(m["clicks"], m["reach"]) * 100), "clicaram", "pfArrowClicaram"),
             (fmt_pct(taxa_conexao), "carregaram a página", "pfArrowConexao"),
+            (fmt_pct(taxa_add_to_cart), "adicionaram ao carrinho", "pfArrowAtc"),
             (fmt_pct(sdiv(m["initiate_checkout"], m["add_to_cart"]) * 100), "avançaram pro checkout", "pfArrowCheckout"),
             (fmt_pct(taxa_finalizacao), "compraram", "pfArrowFinal"),
-            (fmt_pct(sdiv(m["purchases"], m["lpv"]) * 100), "conversão total", "pfArrowTotal"),
         ]
         mrows = [
-            ("Etapa 1 — Entrega", [(fmt_num(m["reach"]), "Alcance · 30d fixo", ""), (fmt_num(m["impressions"]), "Impressões", "", "pfImp"), (fmt_brl(m["cpm"]), "CPM", "", "pfCpm")]),
+            ("Etapa 1 — Entrega", [(fmt_num(m["reach"]), "Alcance (aprox.)", "", "pfReach"), (fmt_num(m["impressions"]), "Impressões", "", "pfImp"), (fmt_brl(m["cpm"]), "CPM", "", "pfCpm")]),
             ("Etapa 2 — Engajamento", [(fmt_pct(m["ctr"]), "CTR", "green" if m["ctr"] > 1.5 else "", "pfCtr"), (fmt_num(m["clicks"]), "Cliques", "", "pfClicks"), (fmt_brl(m["cpc"]), "CPC", "", "pfCpc")]),
             ("Etapa 3 — Página", [(fmt_num(m["lpv"]), "Visualizações", "", "pfLpv"), (fmt_pct(taxa_conexao), "Taxa de Conexão", "green" if taxa_conexao >= 75 else "", "pfConexao")]),
             ("Etapa 4 — Carrinho", [(fmt_num(m["add_to_cart"]), "Add to Cart", "", "pfAtc"), (fmt_pct(taxa_add_to_cart), "Taxa de Add to Cart", "", "pfTaxaAtc")]),
@@ -1610,41 +1612,51 @@ def _fmt_sec_short(v):
     return f"{mins}m {secs:02d}s" if mins else f"{secs}s"
 
 
-def page_comportamento_site(ga4_rows):
-    """Tempo típico (mediana) por seção da página (evento GA4 section_time) — com
-    filtro de período e comparação entre dois períodos, alimentados via JS a partir
-    do histórico diário (GA4_DAILY). A barra representa o tempo (com régua no topo
-    pra referência), e a quantidade de sessões aparece como badge à direita."""
-    if not ga4_rows:
-        hbars_html = '<p style="color:var(--muted)">Sem dados de comportamento no período — verifique se o evento <code>section_time</code> está disparando no site.</p>'
-        axis_html = ""
-        top_section, top_sub = "—", ""
-        total_events = 0
-    else:
-        max_avg = max(r["avg_seconds"] for r in ga4_rows) or 1
-        hbars_html = ""
-        for r in ga4_rows:
-            pct = int(sdiv(r["avg_seconds"], max_avg) * 100)
-            hbars_html += f"""<div class="hbar-item" style="display:flex;align-items:center;gap:10px">
-      <div class="hbar-label">{r["section"]}</div>
-      <div class="hbar-track" style="flex:1"><div class="hbar-fill" style="width:{max(pct,8)}%"><span class="hbar-val">{_fmt_sec_short(r["avg_seconds"])}</span></div></div>
-      <div style="min-width:92px;text-align:right;font-size:12px;font-weight:700;color:var(--gold);white-space:nowrap">{fmt_num(r["events"])} <span style="font-size:9px;color:var(--dim);font-weight:600">sessões</span></div>
-    </div>"""
-        ticks = [0.25, 0.5, 0.75, 1.0]
-        tick_spans = "".join(
-            f'<span style="position:absolute;left:{int(t*100)}%;transform:translateX(-50%)">{_fmt_sec_short(max_avg * t)}</span>'
-            for t in ticks)
-        axis_html = f"""<div style="display:flex;margin-bottom:8px">
-      <div style="width:130px;flex-shrink:0"></div>
-      <div style="flex:1;position:relative;height:14px;font-size:10px;font-weight:600;color:var(--muted)">{tick_spans}</div>
-      <div style="min-width:92px;flex-shrink:0"></div>
-    </div>"""
-        top_section = ga4_rows[0]["section"]
-        top_sub = f"{_fmt_sec_short(ga4_rows[0]['avg_seconds'])} · {fmt_num(ga4_rows[0]['events'])} sessões"
-        total_events = sum(r["events"] for r in ga4_rows)
+def page_comportamento_site(ga4_rows, total_pageviews=0, slug=None):
+    """Alcance de seções (evento GA4 section_time) no mesmo formato visual do
+    funil de vendas — cada "etapa" é uma seção do site, na ordem cronológica de
+    exibição (SECTION_MAP), mostrando quantas sessões chegaram ali e que % isso
+    representa do total de pageviews no período. Sem régua/eixo — o funil já
+    comunica a escala visualmente, igual o funil de vendas."""
+    lookup_entries = SECTION_MAP.get(slug) if slug else None
+    by_label = {r["section"]: r for r in (ga4_rows or [])}
 
-    cards = kcard("Seções Rastreadas", str(len(ga4_rows)), "últimos 30 dias", vid="gaSecoes")
-    cards += kcard("Maior Tempo Típico (mediana)", top_section, top_sub, "gold", vid="gaTopSecao")
+    if lookup_entries:
+        ordered = [(friendly, by_label.get(friendly)) for _, friendly in lookup_entries]
+    else:
+        ordered = [(r["section"], r) for r in (ga4_rows or [])]
+
+    if not ordered:
+        funil_block = f"""
+  <div class="sec-title" style="margin-top:28px"><h3>🔽 Alcance de Seções — vs. Pageview</h3><div class="sec-line"></div></div>
+  <div class="chart-card"><p style="color:var(--muted)">Sem dados de comportamento no período — verifique se o evento <code>section_time</code> está disparando no site.</p></div>"""
+        top_section, top_sub, total_events, secoes_com_dado = "—", "", 0, 0
+    else:
+        stages = [("Pageview", fmt_num(total_pageviews), "total no período", ("gaFunilPvVal", None))]
+        mrows = []
+        for i, (label, row) in enumerate(ordered):
+            events = row["events"] if row else 0
+            avg_seconds = row["avg_seconds"] if row else 0
+            pct = sdiv(events, total_pageviews) * 100 if total_pageviews else 0
+            stages.append((label, fmt_num(events), f"{fmt_pct(pct)} do pageview",
+                           (f"gaSecVal{i}", f"gaSecSub{i}")))
+            mrows.append((label, [(_fmt_sec_short(avg_seconds) if events else "—",
+                                    "Tempo Típico (mediana)", "", f"gaSecTime{i}")]))
+        funil_block = funnel_html(stages, [], "google", "Alcance de Seções — vs. Pageview", mrows,
+                                   platform_label="● Google Analytics 4")
+
+        rows_com_dado = [row for _, row in ordered if row]
+        secoes_com_dado = len(rows_com_dado)
+        if rows_com_dado:
+            top_row = max(rows_com_dado, key=lambda r: r["events"])
+            top_section = top_row["section"]
+            top_sub = f"{fmt_num(top_row['events'])} sessões · {_fmt_sec_short(top_row['avg_seconds'])}"
+        else:
+            top_section, top_sub = "—", ""
+        total_events = sum(r["events"] for r in rows_com_dado)
+
+    cards = kcard("Seções Rastreadas", str(secoes_com_dado), "últimos 30 dias", vid="gaSecoes")
+    cards += kcard("Seção Mais Vista", top_section, top_sub, "gold", vid="gaTopSecao")
     cards += kcard("Sessões section_time", fmt_num(total_events), "últimos 30 dias", vid="gaEventos")
 
     return f"""
@@ -1652,7 +1664,7 @@ def page_comportamento_site(ga4_rows):
 
 <div class="page-inner">
   <div class="sec-title"><h3>👀 Comportamento no Site</h3><div class="sec-line"></div></div>
-  <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Tempo típico de permanência por seção da página (mediana entre sessões, pra não ser distorcido por abas paradas em segundo plano), via GA4 (evento <code>section_time</code>).</p>
+  <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Quantas sessões chegaram em cada seção da página, e que % isso representa do total de pageviews no período — via GA4 (evento <code>section_time</code>).</p>
 
   <div class="period-bar-inline">
     <span class="period-label">Período</span>
@@ -1676,11 +1688,7 @@ def page_comportamento_site(ga4_rows):
   <div id="periodTagG" style="font-size:11px;color:var(--dim);margin:-14px 0 20px 2px">· últimos 30 dias</div>
 
   <div class="kpi-grid kpi-grid-3">{cards}</div>
-  <div class="sec-title" style="margin-top:28px"><h3>⏱️ Tempo Típico por Seção (mediana)</h3><div class="sec-line"></div></div>
-  <div class="chart-card">
-    <div id="gaAxis">{axis_html}</div>
-    <div class="hbar-list" id="gaHbarList">{hbars_html}</div>
-  </div>
+  {funil_block}
 
   <div class="sec-title" style="margin-top:36px"><h3>⚖️ Comparar Dois Períodos</h3><div class="sec-line"></div></div>
   <div class="chart-row" style="grid-template-columns:1fr">
@@ -1767,7 +1775,8 @@ def render(account, meta, g, ga4_daily=None):
     pages += page_funil(account, meta if has_meta else None, g if has_goog else None)
 
     if ga4_rows is not None:
-        pages += page_comportamento_site(ga4_rows)
+        total_pageviews_30d = meta["metrics"]["lpv"] if meta else 0
+        pages += page_comportamento_site(ga4_rows, total_pageviews_30d, account.get("slug"))
 
     tab_btns = "".join(
         f"""<button class="nav-tab{' active' if t[0] == first_tab else ''}" onclick="showPage('{t[0]}',this)">{t[1]}</button>"""
@@ -2017,11 +2026,12 @@ def render(account, meta, g, ga4_daily=None):
             js += """
   // ════ FILTRO DE PERÍODO — FUNIL DE VENDAS ════
   function sumFunilRange(from, to) {
-    const acc = { s: 0, c: 0, i: 0, p: 0, v: 0, lpv: 0, atc: 0, ic: 0 };
+    const acc = { s: 0, c: 0, i: 0, p: 0, v: 0, lpv: 0, atc: 0, ic: 0, rc: 0 };
     for (const row of DM) {
       if (row.d >= from && row.d <= to) {
         acc.s += row.s; acc.c += row.c; acc.i += row.i; acc.p += row.p; acc.v += row.v;
         acc.lpv += (row.lpv || 0); acc.atc += (row.atc || 0); acc.ic += (row.ic || 0);
+        acc.rc += (row.rc || 0);
       }
     }
     return acc;
@@ -2032,6 +2042,7 @@ def render(account, meta, g, ga4_daily=None):
       ctr: d.i ? d.c / d.i * 100 : 0,
       cpc: d.c ? d.s / d.c : 0,
       cpm: d.i ? d.s / d.i * 1000 : 0,
+      clicaram: d.rc ? d.c / d.rc * 100 : 0,
       taxaConexao: d.c ? d.lpv / d.c * 100 : 0,
       taxaAtc: d.lpv ? d.atc / d.lpv * 100 : 0,
       taxaCheckout: d.lpv ? d.ic / d.lpv * 100 : 0,
@@ -2047,6 +2058,8 @@ def render(account, meta, g, ga4_daily=None):
     const d = sumFunilRange(from, to);
     const st = funilStats(d);
 
+    setText('pfStageReachVal', fmtNum(d.rc));
+    setText('pfStageReachSub', 'pessoas únicas (aprox.)');
     setText('pfStageClicksVal', fmtNum(d.c));
     setText('pfStageClicksSub', 'CTR ' + fmtPct(st.ctr));
     setText('pfStageLpvVal', fmtNum(d.lpv));
@@ -2055,11 +2068,13 @@ def render(account, meta, g, ga4_daily=None):
     setText('pfStageComprasVal', fmtNum(d.p));
     setText('pfStageComprasSub', 'receita ' + fmtBRL(d.v));
 
+    setText('pfArrowClicaram', fmtPct(st.clicaram));
     setText('pfArrowConexao', fmtPct(st.taxaConexao));
+    setText('pfArrowAtc', fmtPct(st.taxaAtc));
     setText('pfArrowCheckout', fmtPct(st.avancouCheckout));
     setText('pfArrowFinal', fmtPct(st.taxaFinal));
-    setText('pfArrowTotal', fmtPct(st.convTotal));
 
+    setText('pfReach', fmtNum(d.rc));
     setText('pfImp', fmtNum(d.i));
     setText('pfCpm', fmtBRL(st.cpm));
     setText('pfCtr', fmtPct(st.ctr));
@@ -2341,46 +2356,48 @@ def render(account, meta, g, ga4_daily=None):
     return mins ? (mins + 'm ' + String(secs).padStart(2, '0') + 's') : (Math.round(avg) + 's');
   }}
 
-  function renderSectionBarsG(rows) {{
-    const listEl = document.getElementById('gaHbarList');
-    const axisEl = document.getElementById('gaAxis');
-    if (!rows.length) {{
-      listEl.innerHTML = '<p style="color:var(--muted)">Sem dados de comportamento no período selecionado.</p>';
-      axisEl.innerHTML = '';
-      setTextG('gaSecoes', '0');
-      setTextG('gaTopSecao', '—');
-      setTextG('gaTopSecao-d', '');
-      setTextG('gaEventos', '0');
-      return;
+  function fmtPctG(v) {{ return v.toFixed(2).replace('.', ',') + '%'; }}
+
+  function totalPageviewsRangeG(from, to) {{
+    if (typeof DM === 'undefined') return 0;
+    let total = 0;
+    for (const row of DM) {{
+      if (row.d >= from && row.d <= to) total += (row.lpv || 0);
     }}
-    const maxAvg = Math.max(...rows.map(r => r.avg)) || 1;
-
-    let axisHtml = '<div style="display:flex;margin-bottom:8px"><div style="width:130px;flex-shrink:0"></div>' +
-      '<div style="flex:1;position:relative;height:14px;font-size:10px;font-weight:600;color:var(--muted)">';
-    [0.25, 0.5, 0.75, 1.0].forEach(t => {{
-      axisHtml += '<span style="position:absolute;left:' + Math.round(t * 100) + '%;transform:translateX(-50%)">' + fmtSecG(maxAvg * t) + '</span>';
-    }});
-    axisHtml += '</div><div style="min-width:92px;flex-shrink:0"></div></div>';
-    axisEl.innerHTML = axisHtml;
-
-    let html = '';
-    rows.forEach(r => {{
-      const pct = Math.max(Math.round(r.avg / maxAvg * 100), 8);
-      html += '<div class="hbar-item" style="display:flex;align-items:center;gap:10px"><div class="hbar-label">' + r.section + '</div>' +
-        '<div class="hbar-track" style="flex:1"><div class="hbar-fill" style="width:' + pct + '%"><span class="hbar-val">' + fmtSecG(r.avg) + '</span></div></div>' +
-        '<div style="min-width:92px;text-align:right;font-size:12px;font-weight:700;color:var(--gold);white-space:nowrap">' + fmtNumG(r.events) + ' <span style="font-size:9px;color:var(--dim);font-weight:600">sessões</span></div></div>';
-    }});
-    listEl.innerHTML = html;
-
-    setTextG('gaSecoes', String(rows.length));
-    setTextG('gaTopSecao', rows[0].section);
-    setTextG('gaTopSecao-d', fmtSecG(rows[0].avg) + ' · ' + fmtNumG(rows[0].events) + ' sessões');
-    const totalEvents = rows.reduce((s, r) => s + r.events, 0);
-    setTextG('gaEventos', fmtNumG(totalEvents));
+    return total;
   }}
 
   function applyRangeG(from, to, label) {{
-    renderSectionBarsG(sumSectionRangeG(from, to));
+    const rows = sumSectionRangeG(from, to);
+    const totalPv = totalPageviewsRangeG(from, to);
+    const byOrder = {{}};
+    rows.forEach(r => {{ byOrder[r.order] = r; }});
+
+    setTextG('gaFunilPvVal', fmtNumG(totalPv));
+
+    GA4_SECTION_MAP.forEach((_, i) => {{
+      const r = byOrder[i];
+      const events = r ? r.events : 0;
+      const avg = r ? r.avg : 0;
+      const pct = totalPv ? (events / totalPv * 100) : 0;
+      setTextG('gaSecVal' + i, fmtNumG(events));
+      setTextG('gaSecSub' + i, fmtPctG(pct) + ' do pageview');
+      setTextG('gaSecTime' + i, events ? fmtSecG(avg) : '—');
+    }});
+
+    const withData = rows.filter(r => r.events > 0);
+    setTextG('gaSecoes', String(withData.length));
+    if (withData.length) {{
+      const top = withData.reduce((a, b) => (b.events > a.events ? b : a), withData[0]);
+      setTextG('gaTopSecao', top.section);
+      setTextG('gaTopSecao-d', fmtNumG(top.events) + ' sessões · ' + fmtSecG(top.avg));
+    }} else {{
+      setTextG('gaTopSecao', '—');
+      setTextG('gaTopSecao-d', '');
+    }}
+    const totalEvents = rows.reduce((s, r) => s + r.events, 0);
+    setTextG('gaEventos', fmtNumG(totalEvents));
+
     setTextG('periodTagG', '· ' + label);
   }}
 
