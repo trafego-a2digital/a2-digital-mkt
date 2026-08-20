@@ -229,6 +229,73 @@ def fetch_service_daily(acc_id, result_event, service_source, services, days=120
             for (d, svc), v in acc.items()]
 
 
+def fetch_campaign_daily(acc_id, result_event, days=120):
+    """Histórico diário por campanha (spend + resultado) — alimenta o filtro de
+    período único da aba Campanhas (cabeçalho de cada bloco de campanha)."""
+    today = datetime.date.today()
+    since = (today - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+    until = today.strftime("%Y-%m-%d")
+    tr = json.dumps({"since": since, "until": until})
+
+    rows = []
+    params = {"time_range": tr, "time_increment": 1, "level": "campaign", "limit": 500,
+              "fields": "spend,date_start,actions,campaign_id", "access_token": TOKEN}
+    url = f"{BASE_URL}/{acc_id}/insights"
+    while url:
+        r = requests.get(url, params=params, timeout=60)
+        r.raise_for_status()
+        j = r.json()
+        rows.extend(j.get("data", []))
+        url = (j.get("paging") or {}).get("next")
+        params = {}
+
+    out = []
+    for row in rows:
+        spend = float(row.get("spend", 0))
+        if spend <= 0:
+            continue
+        res = extract_action(row.get("actions", []), result_event)
+        out.append({"d": row.get("date_start"), "cid": row.get("campaign_id"),
+                     "s": round(spend, 2), "r": res})
+    return out
+
+
+def fetch_ad_daily_for_ids(acc_id, result_event, ad_ids, days=120):
+    """Histórico diário por anúncio, restrito a uma lista de IDs — usado só pros
+    criativos que já aparecem no Top 3 de cada campanha (evita puxar todo o
+    histórico de todo anúncio da conta, que seria bem mais pesado)."""
+    if not ad_ids:
+        return []
+    today = datetime.date.today()
+    since = (today - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+    until = today.strftime("%Y-%m-%d")
+    tr = json.dumps({"since": since, "until": until})
+    filtering = json.dumps([{"field": "ad.id", "operator": "IN", "value": list(ad_ids)}])
+
+    rows = []
+    params = {"time_range": tr, "time_increment": 1, "level": "ad", "limit": 500,
+              "filtering": filtering, "fields": "spend,date_start,actions,ad_id",
+              "access_token": TOKEN}
+    url = f"{BASE_URL}/{acc_id}/insights"
+    while url:
+        r = requests.get(url, params=params, timeout=60)
+        r.raise_for_status()
+        j = r.json()
+        rows.extend(j.get("data", []))
+        url = (j.get("paging") or {}).get("next")
+        params = {}
+
+    out = []
+    for row in rows:
+        spend = float(row.get("spend", 0))
+        if spend <= 0:
+            continue
+        res = extract_action(row.get("actions", []), result_event)
+        out.append({"d": row.get("date_start"), "aid": row.get("ad_id"),
+                     "s": round(spend, 2), "r": res})
+    return out
+
+
 def fetch_meta(account):
     acc_id = account["meta_account_id"]
     result_event = account.get("result_event", "lead")
@@ -353,8 +420,29 @@ def fetch_meta(account):
             print(f"     ⚠ service_daily ERRO: {e}", file=sys.stderr)
             service_daily = []
 
+    campaign_daily = None
+    ad_daily = None
+    try:
+        campaign_daily = fetch_campaign_daily(acc_id, result_event)
+        # IDs dos criativos que aparecem no Top 3 de cada campanha (snapshot 30d) —
+        # só esses precisam de histórico diário, não a conta inteira de anúncios.
+        top_ad_ids = set()
+        for camp in camps:
+            ads_sorted = sorted(
+                camp.get("_ads", []),
+                key=lambda a: extract_action((a.get("insights") or {}).get("data", [{}])[0].get("actions", []), result_event),
+                reverse=True)[:3]
+            for ad in ads_sorted:
+                if ad.get("id"):
+                    top_ad_ids.add(ad["id"])
+        ad_daily = fetch_ad_daily_for_ids(acc_id, result_event, top_ad_ids)
+    except Exception as e:
+        print(f"     ⚠ campaign_daily/ad_daily ERRO: {e}", file=sys.stderr)
+        campaign_daily = campaign_daily or []
+        ad_daily = ad_daily or []
+
     return {"metrics": metrics, "campaigns": camps, "daily_compact": daily_compact,
-            "service_daily": service_daily}
+            "service_daily": service_daily, "campaign_daily": campaign_daily, "ad_daily": ad_daily}
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1263,7 +1351,10 @@ def page_consolidado(account, meta, g):
 
 def build_camp_blocks(campaigns, result_label, result_event, ads_key="_ads"):
     blocks = ""
-    for i, camp in enumerate(campaigns, 1):
+    camp_meta = []
+    creative_meta = []
+    idx = 0
+    for camp in campaigns:
         ins   = (camp.get("insights") or {}).get("data", [{}])[0]
         spend = float(ins.get("spend", 0))
         if spend <= 0:
@@ -1271,11 +1362,15 @@ def build_camp_blocks(campaigns, result_label, result_event, ads_key="_ads"):
         res = extract_action(ins.get("actions", []), result_event)
         cpl = sdiv(spend, res)
         obj = camp.get("objective", "—").replace("OUTCOME_", "").replace("_", " ").title()
+        idx += 1
+        i = idx
 
         ads_sorted = sorted(
             camp.get(ads_key, []),
             key=lambda a: extract_action((a.get("insights") or {}).get("data", [{}])[0].get("actions", []), result_event),
             reverse=True)[:3]
+
+        camp_meta.append({"cid": camp.get("id"), "i": i})
 
         creats = ""
         for j, ad in enumerate(ads_sorted):
@@ -1285,6 +1380,7 @@ def build_camp_blocks(campaigns, result_label, result_event, ads_key="_ads"):
             a_cpl   = sdiv(a_spend, a_res)
             prev    = ad.get("preview_shareable_link", "#")
             cpl_cls = "green" if a_cpl and a_cpl < cpl * 0.9 else ("red" if a_cpl > cpl * 1.3 else "")
+            creative_meta.append({"aid": ad.get("id"), "i": i, "j": j})
             creats += f"""
         <div class="creat-card">
           <div class="creat-rank">
@@ -1292,9 +1388,9 @@ def build_camp_blocks(campaigns, result_label, result_event, ads_key="_ads"):
             <a href="{prev}" target="_blank" class="creat-name-link">{ad.get("name","—")}</a>
           </div>
           <div class="creat-metrics">
-            <div class="creat-m"><div class="creat-m-val {'gold' if j==0 else ''}">{fmt_num(a_res)}</div><div class="creat-m-lbl">Resultados</div></div>
-            <div class="creat-m"><div class="creat-m-val">{fmt_brl(a_spend)}</div><div class="creat-m-lbl">Invest.</div></div>
-            <div class="creat-m"><div class="creat-m-val {cpl_cls}">{fmt_brl(a_cpl)}</div><div class="creat-m-lbl">Custo/Res.</div></div>
+            <div class="creat-m"><div class="creat-m-val {'gold' if j==0 else ''}" id="creatRes{i}_{j}">{fmt_num(a_res)}</div><div class="creat-m-lbl">Resultados</div></div>
+            <div class="creat-m"><div class="creat-m-val" id="creatInv{i}_{j}">{fmt_brl(a_spend)}</div><div class="creat-m-lbl">Invest.</div></div>
+            <div class="creat-m"><div class="creat-m-val {cpl_cls}" id="creatCpl{i}_{j}">{fmt_brl(a_cpl)}</div><div class="creat-m-lbl">Custo/Res.</div></div>
           </div>
           <div class="preview-btns">
             <a href="{prev}" target="_blank" class="preview-btn">▶ Ver prévia</a>
@@ -1311,16 +1407,17 @@ def build_camp_blocks(campaigns, result_label, result_event, ads_key="_ads"):
     </div>
     <div class="camp-kpis">
       <div class="camp-kpi"><div class="camp-kpi-label">Objetivo</div><div class="camp-kpi-val" style="font-size:13px">{obj}</div></div>
-      <div class="camp-kpi"><div class="camp-kpi-label">{result_label}</div><div class="camp-kpi-val gold">{fmt_num(res)}</div></div>
-      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val">{fmt_brl(spend)}</div></div>
-      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val {'green' if cpl < 25 else ''}">{fmt_brl(cpl)}</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">{result_label}</div><div class="camp-kpi-val gold" id="campRes{i}">{fmt_num(res)}</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Valor Investido</div><div class="camp-kpi-val" id="campInv{i}">{fmt_brl(spend)}</div></div>
+      <div class="camp-kpi"><div class="camp-kpi-label">Custo/Resultado</div><div class="camp-kpi-val {'green' if cpl < 25 else ''}" id="campCpl{i}">{fmt_brl(cpl)}</div></div>
     </div>
     <div class="creat-sec">
       <div class="creat-sec-title">🏆 Top Criativos</div>
       <div class="creat-grid">{creats if creats else '<p style="color:var(--dim);font-size:12px">Sem criativos no período.</p>'}</div>
     </div>
   </div>"""
-    return blocks or '<p style="color:var(--muted)">Nenhuma campanha com investimento no período.</p>'
+    html = blocks or '<p style="color:var(--muted)">Nenhuma campanha com investimento no período.</p>'
+    return html, camp_meta, creative_meta
 
 
 def compute_service_investment(account, meta, period="30d"):
@@ -1403,25 +1500,6 @@ def build_service_section(account, meta, period="30d"):
 
     return f"""
   <div class="sec-title"><h3>💉 Investimento por Serviço</h3><div class="sec-line"></div></div>
-
-  <div class="period-bar-inline">
-    <span class="period-label">Período</span>
-    <div class="period-btns">
-      <button class="pbtn active" onclick="setPeriodSvc(this,'30d')">30 dias</button>
-      <button class="pbtn" onclick="setPeriodSvc(this,'90d')">3 meses</button>
-      <button class="pbtn" onclick="setPeriodSvc(this,'month')">Mês atual</button>
-      <button class="pbtn" onclick="setPeriodSvc(this,'lmonth')">Mês passado</button>
-      <button class="pbtn" onclick="toggleCustomSvc(this)">📅 Personalizado</button>
-    </div>
-    <div class="custom-wrap" id="customWrapSvc">
-      <input type="date" class="date-inp" id="dateFromSvc">
-      <span style="color:var(--dim);font-size:11px">até</span>
-      <input type="date" class="date-inp" id="dateToSvc">
-      <button class="date-apply" onclick="applyCustomSvc()">Aplicar</button>
-    </div>
-  </div>
-  <div id="periodTagSvc" style="font-size:11px;color:var(--dim);margin:-14px 0 20px 2px">· últimos 30 dias</div>
-
   <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">{cards}</div>
 """
 
@@ -1429,25 +1507,44 @@ def build_service_section(account, meta, period="30d"):
 def page_campanhas_meta(account, meta):
     result_label = account.get("result_label", "Resultados")
     result_event = account.get("result_event", "lead")
-    blocks_30 = build_camp_blocks(meta["campaigns"], result_label, result_event, "_ads")
-    blocks_90 = build_camp_blocks(meta["campaigns"], result_label, result_event, "_ads_90d")
+    blocks_html, camp_meta, creative_meta = build_camp_blocks(meta["campaigns"], result_label, result_event, "_ads")
+    meta["_camp_meta"] = camp_meta
+    meta["_creative_meta"] = creative_meta
 
     has_services = bool(account.get("services"))
     svc_section = build_service_section(account, meta, "30d") if has_services else ""
 
+    has_dynamic = meta.get("campaign_daily") is not None
+
+    period_bar = ""
+    if has_dynamic:
+        period_bar = """
+  <div class="period-bar-inline">
+    <span class="period-label">Período</span>
+    <div class="period-btns">
+      <button class="pbtn active" onclick="setPeriodCamp(this,'30d')">30 dias</button>
+      <button class="pbtn" onclick="setPeriodCamp(this,'90d')">3 meses</button>
+      <button class="pbtn" onclick="setPeriodCamp(this,'month')">Mês atual</button>
+      <button class="pbtn" onclick="setPeriodCamp(this,'lmonth')">Mês passado</button>
+      <button class="pbtn" onclick="toggleCustomCamp(this)">📅 Personalizado</button>
+    </div>
+    <div class="custom-wrap" id="customWrapCamp">
+      <input type="date" class="date-inp" id="dateFromCamp">
+      <span style="color:var(--dim);font-size:11px">até</span>
+      <input type="date" class="date-inp" id="dateToCamp">
+      <button class="date-apply" onclick="applyCustomCamp()">Aplicar</button>
+    </div>
+  </div>
+  <div id="periodTagCamp" style="font-size:11px;color:var(--dim);margin:-14px 0 20px 2px">· últimos 30 dias</div>
+"""
+
     return f"""
 <div id="page-campanhas" class="page">
 <div class="page-inner">
+  {period_bar}
   <div id="svcSection">{svc_section}</div>
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px;margin-top:36px">
-    <div class="sec-title" style="margin:0"><h3>📣 Campanhas Meta Ads</h3></div>
-    <div style="display:flex;gap:4px" id="campPeriodBtns">
-      <button class="pbtn active" onclick="switchCampPeriod(this,'30d')">Últimos 30 dias</button>
-      <button class="pbtn" onclick="switchCampPeriod(this,'90d')">Últimos 3 meses</button>
-    </div>
-  </div>
-  <div id="campBlocks30">{blocks_30}</div>
-  <div id="campBlocks90" style="display:none">{blocks_90}</div>
+  <div class="sec-title" style="margin-top:36px"><h3>📣 Campanhas Meta Ads</h3></div>
+  <div id="campBlocks">{blocks_html}</div>
 </div>
 </div>"""
 
@@ -1868,20 +1965,28 @@ def render(account, meta, g, ga4_daily=None):
   const RESULT_LABEL = {json.dumps(result_label)};"""
 
         service_daily = meta.get("service_daily")
-        if service_daily is not None:
-            services_list = account.get("services", [])
+        campaign_daily = meta.get("campaign_daily")
+        ad_daily = meta.get("ad_daily")
+        if campaign_daily is not None:
+            services_list = account.get("services", []) if service_daily is not None else []
+            camp_meta_js = meta.get("_camp_meta", [])
+            creative_meta_js = meta.get("_creative_meta", [])
             js += f"""
-  // ════ INVESTIMENTO POR SERVIÇO — FILTRO DE PERÍODO ════
-  const SERVICE_DAILY = {json.dumps(service_daily)};
+  // ════ FILTRO ÚNICO DA ABA CAMPANHAS — serviço + campanhas + criativos ════
+  const SERVICE_DAILY = {json.dumps(service_daily or [])};
   const SERVICES_LIST = {json.dumps(services_list, ensure_ascii=False)};
+  const CAMPAIGN_DAILY = {json.dumps(campaign_daily)};
+  const AD_DAILY = {json.dumps(ad_daily or [])};
+  const CAMP_META = {json.dumps(camp_meta_js)};
+  const CREATIVE_META = {json.dumps(creative_meta_js)};
 
-  function fmtNumSvc(v) {{ return Math.round(v).toLocaleString('pt-BR'); }}
-  function fmtBRLSvc(v) {{ return v >= 1000 ? 'R$ ' + Math.round(v).toLocaleString('pt-BR') : 'R$ ' + v.toFixed(2).replace('.', ','); }}
-  function fmtPctSvc(v) {{ return v.toFixed(2).replace('.', ',') + '%'; }}
-  function setTextSvc(id, txt) {{ const el = document.getElementById(id); if (el) el.textContent = txt; }}
-  function dstrSvc(d) {{ return d.toISOString().slice(0, 10); }}
+  function fmtNumCamp(v) {{ return Math.round(v).toLocaleString('pt-BR'); }}
+  function fmtBRLCamp(v) {{ return v >= 1000 ? 'R$ ' + Math.round(v).toLocaleString('pt-BR') : 'R$ ' + v.toFixed(2).replace('.', ','); }}
+  function fmtPctCamp(v) {{ return v.toFixed(2).replace('.', ',') + '%'; }}
+  function setTextCamp(id, txt) {{ const el = document.getElementById(id); if (el) el.textContent = txt; }}
+  function dstrCamp(d) {{ return d.toISOString().slice(0, 10); }}
 
-  function sumServiceRange(from, to) {{
+  function sumServiceRangeCamp(from, to) {{
     const acc = {{}};
     for (const row of SERVICE_DAILY) {{
       if (row.d >= from && row.d <= to) {{
@@ -1893,60 +1998,95 @@ def render(account, meta, g, ga4_daily=None):
     return acc;
   }}
 
-  function applyRangeSvc(from, to, label) {{
-    const acc = sumServiceRange(from, to);
-    let total = 0;
-    Object.values(acc).forEach(v => total += v.s);
-
-    SERVICES_LIST.forEach((svc, i) => {{
-      const v = acc[svc] || {{ s: 0, r: 0 }};
-      const pct = total ? (v.s / total * 100) : 0;
-      const cpl = v.r ? v.s / v.r : 0;
-      setTextSvc('svcVal' + i, fmtBRLSvc(v.s));
-      setTextSvc('svcSub' + i, fmtNumSvc(v.r) + ' ' + RESULT_LABEL.toLowerCase() + ' · ' + fmtBRLSvc(cpl) + ' · ' + fmtPctSvc(pct) + ' do total');
-    }});
-
-    const outros = acc['Outras / Não Identificado'] || {{ s: 0, r: 0 }};
-    const pctOut = total ? (outros.s / total * 100) : 0;
-    setTextSvc('svcOutrosVal', fmtBRLSvc(outros.s));
-    setTextSvc('svcOutrosSub', fmtNumSvc(outros.r) + ' ' + RESULT_LABEL.toLowerCase() + ' · ' + fmtPctSvc(pctOut) + ' do total');
-
-    setTextSvc('periodTagSvc', '· ' + label);
+  function sumCampaignRange(cid, from, to) {{
+    const acc = {{ s: 0, r: 0 }};
+    for (const row of CAMPAIGN_DAILY) {{
+      if (row.cid === cid && row.d >= from && row.d <= to) {{ acc.s += row.s; acc.r += row.r; }}
+    }}
+    return acc;
   }}
 
-  function setPeriodSvc(btn, key) {{
-    document.querySelectorAll('#svcSection .period-btns .pbtn').forEach(b => b.classList.remove('active'));
+  function sumAdRange(aid, from, to) {{
+    const acc = {{ s: 0, r: 0 }};
+    for (const row of AD_DAILY) {{
+      if (row.aid === aid && row.d >= from && row.d <= to) {{ acc.s += row.s; acc.r += row.r; }}
+    }}
+    return acc;
+  }}
+
+  function applyRangeCamp(from, to, label) {{
+    // ── serviço ──
+    if (SERVICES_LIST.length) {{
+      const acc = sumServiceRangeCamp(from, to);
+      let total = 0;
+      Object.values(acc).forEach(v => total += v.s);
+      SERVICES_LIST.forEach((svc, i) => {{
+        const v = acc[svc] || {{ s: 0, r: 0 }};
+        const pct = total ? (v.s / total * 100) : 0;
+        const cpl = v.r ? v.s / v.r : 0;
+        setTextCamp('svcVal' + i, fmtBRLCamp(v.s));
+        setTextCamp('svcSub' + i, fmtNumCamp(v.r) + ' ' + RESULT_LABEL.toLowerCase() + ' · ' + fmtBRLCamp(cpl) + ' · ' + fmtPctCamp(pct) + ' do total');
+      }});
+      const outros = acc['Outras / Não Identificado'] || {{ s: 0, r: 0 }};
+      const pctOut = total ? (outros.s / total * 100) : 0;
+      setTextCamp('svcOutrosVal', fmtBRLCamp(outros.s));
+      setTextCamp('svcOutrosSub', fmtNumCamp(outros.r) + ' ' + RESULT_LABEL.toLowerCase() + ' · ' + fmtPctCamp(pctOut) + ' do total');
+    }}
+
+    // ── campanhas ──
+    CAMP_META.forEach(c => {{
+      const v = sumCampaignRange(c.cid, from, to);
+      const cpl = v.r ? v.s / v.r : 0;
+      setTextCamp('campRes' + c.i, fmtNumCamp(v.r));
+      setTextCamp('campInv' + c.i, fmtBRLCamp(v.s));
+      setTextCamp('campCpl' + c.i, fmtBRLCamp(cpl));
+    }});
+
+    // ── criativos (top 3 fixo por campanha — só os números mudam, não a ordem) ──
+    CREATIVE_META.forEach(cr => {{
+      const v = sumAdRange(cr.aid, from, to);
+      const cpl = v.r ? v.s / v.r : 0;
+      setTextCamp('creatRes' + cr.i + '_' + cr.j, fmtNumCamp(v.r));
+      setTextCamp('creatInv' + cr.i + '_' + cr.j, fmtBRLCamp(v.s));
+      setTextCamp('creatCpl' + cr.i + '_' + cr.j, fmtBRLCamp(cpl));
+    }});
+
+    setTextCamp('periodTagCamp', '· ' + label);
+  }}
+
+  function setPeriodCamp(btn, key) {{
+    document.querySelectorAll('#page-campanhas .period-btns .pbtn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById('customWrapSvc').classList.remove('show');
+    document.getElementById('customWrapCamp').classList.remove('show');
     const today = new Date();
-    let from, to = dstrSvc(today), label;
-    if (key === '30d')       {{ from = dstrSvc(new Date(today - 29 * 86400000)); label = 'últimos 30 dias'; }}
-    else if (key === '90d')  {{ from = dstrSvc(new Date(today - 89 * 86400000)); label = 'últimos 3 meses'; }}
+    let from, to = dstrCamp(today), label;
+    if (key === '30d')       {{ from = dstrCamp(new Date(today - 29 * 86400000)); label = 'últimos 30 dias'; }}
+    else if (key === '90d')  {{ from = dstrCamp(new Date(today - 89 * 86400000)); label = 'últimos 3 meses'; }}
     else if (key === 'month'){{ from = to.slice(0, 8) + '01'; label = 'mês atual'; }}
     else if (key === 'lmonth') {{
       const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      from = dstrSvc(d);
-      to = dstrSvc(new Date(today.getFullYear(), today.getMonth(), 0));
+      from = dstrCamp(d);
+      to = dstrCamp(new Date(today.getFullYear(), today.getMonth(), 0));
       label = 'mês passado';
     }}
-    applyRangeSvc(from, to, label);
+    applyRangeCamp(from, to, label);
   }}
 
-  function toggleCustomSvc(btn) {{
-    document.querySelectorAll('#svcSection .period-btns .pbtn').forEach(b => b.classList.remove('active'));
+  function toggleCustomCamp(btn) {{
+    document.querySelectorAll('#page-campanhas .period-btns .pbtn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById('customWrapSvc').classList.toggle('show');
+    document.getElementById('customWrapCamp').classList.toggle('show');
   }}
 
-  function applyCustomSvc() {{
-    const f = document.getElementById('dateFromSvc').value, t = document.getElementById('dateToSvc').value;
-    if (f && t) applyRangeSvc(f, t, f.slice(8) + '/' + f.slice(5,7) + ' a ' + t.slice(8) + '/' + t.slice(5,7));
+  function applyCustomCamp() {{
+    const f = document.getElementById('dateFromCamp').value, t = document.getElementById('dateToCamp').value;
+    if (f && t) applyRangeCamp(f, t, f.slice(8) + '/' + f.slice(5,7) + ' a ' + t.slice(8) + '/' + t.slice(5,7));
   }}
 
   // Estado inicial: últimos 30 dias
   {{
-    const _tsvc = new Date();
-    applyRangeSvc(dstrSvc(new Date(_tsvc - 29 * 86400000)), dstrSvc(_tsvc), 'últimos 30 dias');
+    const _tcamp = new Date();
+    applyRangeCamp(dstrCamp(new Date(_tcamp - 29 * 86400000)), dstrCamp(_tcamp), 'últimos 30 dias');
   }}
 """
 
@@ -2656,12 +2796,6 @@ def render(account, meta, g, ga4_daily=None):
 </nav>
 {pages}
 <script>
-function switchCampPeriod(btn, p) {{
-  document.querySelectorAll('#campPeriodBtns .pbtn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('campBlocks30').style.display = p === '30d' ? '' : 'none';
-  document.getElementById('campBlocks90').style.display = p === '90d' ? '' : 'none';
-}}
 function switchCreatPeriod(btn, p) {{
   document.querySelectorAll('#page-criativos .pbtn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
