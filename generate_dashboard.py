@@ -2569,17 +2569,23 @@ def main():
                 print(f"     ✗ GA4 ERRO: {e}", file=sys.stderr)
                 ga4_daily = []  # aba aparece, mas com aviso de "sem dados"
 
-            # Diagnóstico: se a conta tem mapeamento (SECTION_MAP) mas nenhuma seção
-            # recebida bate com ele, mostra os nomes reais que vieram da API — ajuda
-            # a corrigir o mapeamento sem precisar adivinhar.
+            # Diagnóstico: se a conta tem mapeamento (SECTION_MAP), mostra se a API
+            # retornou zero linhas (rastreamento pode não estar disparando, ou não
+            # tem tráfego no período) ou se retornou linhas cujos nomes não batem
+            # com o mapeamento — ajuda a identificar a causa sem precisar adivinhar.
             slug_conta = account.get("slug")
             lookup_diag = _section_lookup(slug_conta)
-            if lookup_diag and ga4_daily:
-                nomes_recebidos = sorted({row["s"] for row in ga4_daily})
-                nomes_batendo = [n for n in nomes_recebidos if n.lower() in lookup_diag]
-                if not nomes_batendo:
-                    print(f"     ⚠ GA4 [{slug_conta}]: nenhum nome de seção bateu com o "
-                          f"mapeamento. Nomes recebidos da API: {nomes_recebidos}", file=sys.stderr)
+            if lookup_diag:
+                if not ga4_daily:
+                    print(f"     ⚠ GA4 [{slug_conta}]: a API retornou ZERO linhas — "
+                          f"o evento section_time pode não estar disparando nessa "
+                          f"propriedade, ou não tem tráfego no período buscado.", file=sys.stderr)
+                else:
+                    nomes_recebidos = sorted({row["s"] for row in ga4_daily})
+                    nomes_batendo = [n for n in nomes_recebidos if n.lower() in lookup_diag]
+                    if not nomes_batendo:
+                        print(f"     ⚠ GA4 [{slug_conta}]: nenhum nome de seção bateu com o "
+                              f"mapeamento. Nomes recebidos da API: {nomes_recebidos}", file=sys.stderr)
 
         if not meta_data and not goog_data:
             print(f"     ✗ Sem dados — pulando")
