@@ -183,6 +183,52 @@ def extract_action_value(values, event_type):
     return 0.0
 
 
+def fetch_service_daily(acc_id, result_event, service_source, services, days=120):
+    """Busca o histórico diário por campanha (ou por anúncio, conforme service_source)
+    e já agrupa por serviço — permite o filtro de período dinâmico na aba Campanhas
+    (Investimento por Serviço), igual ao que já existe no Funil e no Comportamento no Site."""
+    level = "campaign" if service_source == "campaign_name" else "ad"
+    name_field = "campaign_name" if level == "campaign" else "ad_name"
+
+    today = datetime.date.today()
+    since = (today - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+    until = today.strftime("%Y-%m-%d")
+    tr = json.dumps({"since": since, "until": until})
+
+    rows = []
+    params = {"time_range": tr, "time_increment": 1, "level": level, "limit": 500,
+              "fields": f"spend,date_start,actions,{name_field}", "access_token": TOKEN}
+    url = f"{BASE_URL}/{acc_id}/insights"
+    while url:
+        r = requests.get(url, params=params, timeout=60)
+        r.raise_for_status()
+        j = r.json()
+        rows.extend(j.get("data", []))
+        url = (j.get("paging") or {}).get("next")
+        params = {}
+
+    acc = {}  # {(dia, serviço): {"s": spend, "r": resultados}}
+    for row in rows:
+        d = row.get("date_start")
+        name = row.get(name_field, "") or ""
+        spend = float(row.get("spend", 0))
+        if spend <= 0:
+            continue
+        res = extract_action(row.get("actions", []), result_event)
+        matched = None
+        for s in services:
+            if s.lower() in name.lower():
+                matched = s
+                break
+        key = matched or "Outras / Não Identificado"
+        cell = acc.setdefault((d, key), {"s": 0.0, "r": 0})
+        cell["s"] += spend
+        cell["r"] += res
+
+    return [{"d": d, "svc": svc, "s": round(v["s"], 2), "r": v["r"]}
+            for (d, svc), v in acc.items()]
+
+
 def fetch_meta(account):
     acc_id = account["meta_account_id"]
     result_event = account.get("result_event", "lead")
@@ -297,7 +343,18 @@ def fetch_meta(account):
             except Exception:
                 camp[key] = []
 
-    return {"metrics": metrics, "campaigns": camps, "daily_compact": daily_compact}
+    service_daily = None
+    if account.get("services"):
+        try:
+            service_daily = fetch_service_daily(
+                acc_id, result_event, account.get("service_source", "campaign_name"),
+                account.get("services"))
+        except Exception as e:
+            print(f"     ⚠ service_daily ERRO: {e}", file=sys.stderr)
+            service_daily = []
+
+    return {"metrics": metrics, "campaigns": camps, "daily_compact": daily_compact,
+            "service_daily": service_daily}
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1322,29 +1379,49 @@ def build_service_section(account, meta, period="30d"):
     data, outros = compute_service_investment(account, meta, period)
     result_label = account.get("result_label", "Resultados")
     total_spend = sum(v["spend"] for v in data.values()) + outros["spend"]
+    services = account.get("services", [])
 
     cards = ""
-    for service, v in data.items():
+    for i, service in enumerate(services):
+        v = data.get(service, {"spend": 0.0, "res": 0})
         pct = sdiv(v["spend"], total_spend) * 100 if total_spend else 0
         cpl = sdiv(v["spend"], v["res"])
         cards += f"""
     <div class="kcard"><div class="kcard-accent"></div>
       <div class="kcard-label">{service}</div>
-      <div class="kcard-value gold">{fmt_brl(v["spend"])}</div>
-      <span class="kcard-delta neutral">{fmt_num(v["res"])} {result_label.lower()} · {fmt_brl(cpl)} · {fmt_pct(pct)} do total</span>
+      <div class="kcard-value gold" id="svcVal{i}">{fmt_brl(v["spend"])}</div>
+      <span class="kcard-delta neutral" id="svcSub{i}">{fmt_num(v["res"])} {result_label.lower()} · {fmt_brl(cpl)} · {fmt_pct(pct)} do total</span>
     </div>"""
 
-    if outros["spend"] > 0:
-        pct = sdiv(outros["spend"], total_spend) * 100 if total_spend else 0
-        cards += f"""
-    <div class="kcard" style="opacity:.7"><div class="kcard-accent"></div>
+    pct_out = sdiv(outros["spend"], total_spend) * 100 if total_spend else 0
+    cards += f"""
+    <div class="kcard" style="opacity:.7" id="svcOutrosCard"><div class="kcard-accent"></div>
       <div class="kcard-label">Outras / Não Identificado</div>
-      <div class="kcard-value">{fmt_brl(outros["spend"])}</div>
-      <span class="kcard-delta neutral">{fmt_num(outros["res"])} {result_label.lower()} · {fmt_pct(pct)} do total</span>
+      <div class="kcard-value" id="svcOutrosVal">{fmt_brl(outros["spend"])}</div>
+      <span class="kcard-delta neutral" id="svcOutrosSub">{fmt_num(outros["res"])} {result_label.lower()} · {fmt_pct(pct_out)} do total</span>
     </div>"""
 
     return f"""
   <div class="sec-title"><h3>💉 Investimento por Serviço</h3><div class="sec-line"></div></div>
+
+  <div class="period-bar-inline">
+    <span class="period-label">Período</span>
+    <div class="period-btns">
+      <button class="pbtn active" onclick="setPeriodSvc(this,'30d')">30 dias</button>
+      <button class="pbtn" onclick="setPeriodSvc(this,'90d')">3 meses</button>
+      <button class="pbtn" onclick="setPeriodSvc(this,'month')">Mês atual</button>
+      <button class="pbtn" onclick="setPeriodSvc(this,'lmonth')">Mês passado</button>
+      <button class="pbtn" onclick="toggleCustomSvc(this)">📅 Personalizado</button>
+    </div>
+    <div class="custom-wrap" id="customWrapSvc">
+      <input type="date" class="date-inp" id="dateFromSvc">
+      <span style="color:var(--dim);font-size:11px">até</span>
+      <input type="date" class="date-inp" id="dateToSvc">
+      <button class="date-apply" onclick="applyCustomSvc()">Aplicar</button>
+    </div>
+  </div>
+  <div id="periodTagSvc" style="font-size:11px;color:var(--dim);margin:-14px 0 20px 2px">· últimos 30 dias</div>
+
   <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">{cards}</div>
 """
 
@@ -1356,21 +1433,19 @@ def page_campanhas_meta(account, meta):
     blocks_90 = build_camp_blocks(meta["campaigns"], result_label, result_event, "_ads_90d")
 
     has_services = bool(account.get("services"))
-    svc_30 = build_service_section(account, meta, "30d") if has_services else ""
-    svc_90 = build_service_section(account, meta, "90d") if has_services else ""
+    svc_section = build_service_section(account, meta, "30d") if has_services else ""
 
     return f"""
 <div id="page-campanhas" class="page">
 <div class="page-inner">
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+  <div id="svcSection">{svc_section}</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px;margin-top:36px">
     <div class="sec-title" style="margin:0"><h3>📣 Campanhas Meta Ads</h3></div>
-    <div style="display:flex;gap:4px">
+    <div style="display:flex;gap:4px" id="campPeriodBtns">
       <button class="pbtn active" onclick="switchCampPeriod(this,'30d')">Últimos 30 dias</button>
       <button class="pbtn" onclick="switchCampPeriod(this,'90d')">Últimos 3 meses</button>
     </div>
   </div>
-  <div id="svcBlocks30">{svc_30}</div>
-  <div id="svcBlocks90" style="display:none">{svc_90}</div>
   <div id="campBlocks30">{blocks_30}</div>
   <div id="campBlocks90" style="display:none">{blocks_90}</div>
 </div>
@@ -1791,6 +1866,89 @@ def render(account, meta, g, ga4_daily=None):
   const DM = {json.dumps(dc)};
   const HAS_ROAS = {str(account.get("has_roas", False)).lower()};
   const RESULT_LABEL = {json.dumps(result_label)};"""
+
+        service_daily = meta.get("service_daily")
+        if service_daily is not None:
+            services_list = account.get("services", [])
+            js += f"""
+  // ════ INVESTIMENTO POR SERVIÇO — FILTRO DE PERÍODO ════
+  const SERVICE_DAILY = {json.dumps(service_daily)};
+  const SERVICES_LIST = {json.dumps(services_list, ensure_ascii=False)};
+
+  function fmtNumSvc(v) {{ return Math.round(v).toLocaleString('pt-BR'); }}
+  function fmtBRLSvc(v) {{ return v >= 1000 ? 'R$ ' + Math.round(v).toLocaleString('pt-BR') : 'R$ ' + v.toFixed(2).replace('.', ','); }}
+  function fmtPctSvc(v) {{ return v.toFixed(2).replace('.', ',') + '%'; }}
+  function setTextSvc(id, txt) {{ const el = document.getElementById(id); if (el) el.textContent = txt; }}
+  function dstrSvc(d) {{ return d.toISOString().slice(0, 10); }}
+
+  function sumServiceRange(from, to) {{
+    const acc = {{}};
+    for (const row of SERVICE_DAILY) {{
+      if (row.d >= from && row.d <= to) {{
+        if (!acc[row.svc]) acc[row.svc] = {{ s: 0, r: 0 }};
+        acc[row.svc].s += row.s;
+        acc[row.svc].r += row.r;
+      }}
+    }}
+    return acc;
+  }}
+
+  function applyRangeSvc(from, to, label) {{
+    const acc = sumServiceRange(from, to);
+    let total = 0;
+    Object.values(acc).forEach(v => total += v.s);
+
+    SERVICES_LIST.forEach((svc, i) => {{
+      const v = acc[svc] || {{ s: 0, r: 0 }};
+      const pct = total ? (v.s / total * 100) : 0;
+      const cpl = v.r ? v.s / v.r : 0;
+      setTextSvc('svcVal' + i, fmtBRLSvc(v.s));
+      setTextSvc('svcSub' + i, fmtNumSvc(v.r) + ' ' + RESULT_LABEL.toLowerCase() + ' · ' + fmtBRLSvc(cpl) + ' · ' + fmtPctSvc(pct) + ' do total');
+    }});
+
+    const outros = acc['Outras / Não Identificado'] || {{ s: 0, r: 0 }};
+    const pctOut = total ? (outros.s / total * 100) : 0;
+    setTextSvc('svcOutrosVal', fmtBRLSvc(outros.s));
+    setTextSvc('svcOutrosSub', fmtNumSvc(outros.r) + ' ' + RESULT_LABEL.toLowerCase() + ' · ' + fmtPctSvc(pctOut) + ' do total');
+
+    setTextSvc('periodTagSvc', '· ' + label);
+  }}
+
+  function setPeriodSvc(btn, key) {{
+    document.querySelectorAll('#svcSection .period-btns .pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrapSvc').classList.remove('show');
+    const today = new Date();
+    let from, to = dstrSvc(today), label;
+    if (key === '30d')       {{ from = dstrSvc(new Date(today - 29 * 86400000)); label = 'últimos 30 dias'; }}
+    else if (key === '90d')  {{ from = dstrSvc(new Date(today - 89 * 86400000)); label = 'últimos 3 meses'; }}
+    else if (key === 'month'){{ from = to.slice(0, 8) + '01'; label = 'mês atual'; }}
+    else if (key === 'lmonth') {{
+      const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      from = dstrSvc(d);
+      to = dstrSvc(new Date(today.getFullYear(), today.getMonth(), 0));
+      label = 'mês passado';
+    }}
+    applyRangeSvc(from, to, label);
+  }}
+
+  function toggleCustomSvc(btn) {{
+    document.querySelectorAll('#svcSection .period-btns .pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('customWrapSvc').classList.toggle('show');
+  }}
+
+  function applyCustomSvc() {{
+    const f = document.getElementById('dateFromSvc').value, t = document.getElementById('dateToSvc').value;
+    if (f && t) applyRangeSvc(f, t, f.slice(8) + '/' + f.slice(5,7) + ' a ' + t.slice(8) + '/' + t.slice(5,7));
+  }}
+
+  // Estado inicial: últimos 30 dias
+  {{
+    const _tsvc = new Date();
+    applyRangeSvc(dstrSvc(new Date(_tsvc - 29 * 86400000)), dstrSvc(_tsvc), 'últimos 30 dias');
+  }}
+"""
 
         if dist_labels:
             js += f"""
@@ -2499,13 +2657,10 @@ def render(account, meta, g, ga4_daily=None):
 {pages}
 <script>
 function switchCampPeriod(btn, p) {{
-  document.querySelectorAll('#page-campanhas .pbtn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#campPeriodBtns .pbtn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('campBlocks30').style.display = p === '30d' ? '' : 'none';
   document.getElementById('campBlocks90').style.display = p === '90d' ? '' : 'none';
-  const s30 = document.getElementById('svcBlocks30'), s90 = document.getElementById('svcBlocks90');
-  if (s30) s30.style.display = p === '30d' ? '' : 'none';
-  if (s90) s90.style.display = p === '90d' ? '' : 'none';
 }}
 function switchCreatPeriod(btn, p) {{
   document.querySelectorAll('#page-criativos .pbtn').forEach(b => b.classList.remove('active'));
