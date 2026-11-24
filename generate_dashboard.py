@@ -4,6 +4,8 @@ Meta Ads + Google Ads + Consolidado + Funis por plataforma.
 
 Secrets necessários:
   META_ACCESS_TOKEN, DASHBOARD_ACCOUNTS,
+  META_TOKEN_<CLIENTE> (opcional — token próprio p/ contas fora da BM da A2,
+                        referenciado por "meta_token_env" na conta),
   GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID,
   GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN,
   GA4_SERVICE_ACCOUNT_JSON (opcional — habilita a aba "Comportamento no site")
@@ -12,7 +14,11 @@ Secrets necessários:
 import os, json, sys, re, base64, datetime, requests
 from pathlib import Path
 
-TOKEN    = os.environ.get("META_ACCESS_TOKEN", "")
+DEFAULT_TOKEN = os.environ.get("META_ACCESS_TOKEN", "")
+# Token ativo da conta em processamento. Por padrão é o token do system user da
+# BM da A2; contas fora da BM da A2 (ex: Xerez) informam "meta_token_env" no
+# DASHBOARD_ACCOUNTS com o nome do secret/env que guarda o token próprio delas.
+TOKEN    = DEFAULT_TOKEN
 ACCOUNTS = json.loads(os.environ["DASHBOARD_ACCOUNTS"])
 MCC_ID   = "9719455407"
 API_VER  = "v20.0"
@@ -2820,6 +2826,7 @@ Chart.defaults.color='#666';Chart.defaults.borderColor='#222';Chart.defaults.fon
 # ════════════════════════════════════════════════════════════════════
 
 def main():
+    global TOKEN
     print(f"Gerando dashboards para {len(ACCOUNTS)} contas...")
     ok, fail = 0, 0
 
@@ -2836,6 +2843,16 @@ def main():
         print(f"  → {account['name']} ({', '.join(platforms)})")
 
         meta_data = goog_data = None
+
+        # Seleciona o token Meta da conta: próprio (meta_token_env) ou o padrão da A2
+        token_env = account.get("meta_token_env")
+        if token_env:
+            TOKEN = os.environ.get(token_env, "")
+            if not TOKEN:
+                print(f"     ⚠ {token_env} não encontrado no ambiente — "
+                      f"confira o secret e o env do workflow", file=sys.stderr)
+        else:
+            TOKEN = DEFAULT_TOKEN
 
         if "meta" in platforms:
             try:
